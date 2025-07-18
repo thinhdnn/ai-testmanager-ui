@@ -2,3 +2,15 @@
 *.pyc
 __pycache__
 venv
+node_modules
+dist
+*.egg-info
+*.log
+*.db
+*.sqlite3
+*.env
+*.bak
+*.swp
+*.tmp
+*.pid
+*.coverage
