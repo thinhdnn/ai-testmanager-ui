@@ -1,4 +1,4 @@
-backend/.DS_Store
+.DS_Store
 *.pyc
-/backend/app/__pycache__
-/backend/venv
+__pycache__
+venv
