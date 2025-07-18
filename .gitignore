@@ -14,3 +14,5 @@ dist
 *.tmp
 *.pid
 *.coverage
+.next
+frontend/.env.local
