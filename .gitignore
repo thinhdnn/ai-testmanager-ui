@@ -1,0 +1,4 @@
+backend/.DS_Store
+*.pyc
+/backend/app/__pycache__
+/backend/venv

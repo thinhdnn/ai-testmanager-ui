@@ -1,0 +1,1 @@
+testmanager_postgres:5432:*:testmanager_user:testmanager_password 
