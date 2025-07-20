@@ -35,8 +35,7 @@ class Fixture(FixtureBase):
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
     created_at: datetime
-    updated_at: datetime
-    author_name: Optional[str] = None  # New field for username
+    updated_at: Optional[datetime] = None
 
     @validator('id')
     def convert_id_to_str(cls, v):

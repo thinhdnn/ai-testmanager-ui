@@ -35,7 +35,7 @@ def create_project(db: Session, project: ProjectCreate, created_by: str) -> Proj
     return db_project
 
 
-def update_project(db: Session, project_id: UUID, project: ProjectUpdate) -> Optional[Project]:
+def update_project(db: Session, project_id: UUID, project: ProjectUpdate, updated_by: str = None) -> Optional[Project]:
     db_project = get_project(db, project_id)
     if not db_project:
         return None
@@ -43,6 +43,9 @@ def update_project(db: Session, project_id: UUID, project: ProjectUpdate) -> Opt
     update_data = project.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(db_project, field, value)
+    
+    if updated_by:
+        db_project.updated_by = updated_by
     
     db.commit()
     db.refresh(db_project)

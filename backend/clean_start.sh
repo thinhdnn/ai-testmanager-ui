@@ -16,9 +16,9 @@ docker volume prune -f
 echo "🌐 Cleaning networks..."
 docker network prune -f
 
-# Start database and pgadmin fresh
-echo "🐘 Starting fresh PostgreSQL and PgAdmin..."
-docker-compose up -d postgres pgadmin
+# Start database and cloudbeaver fresh
+echo "🐘 Starting fresh PostgreSQL and CloudBeaver..."
+docker-compose up -d postgres cloudbeaver
 
 # Wait longer for database
 echo "⏳ Waiting for database (30 seconds)..."
@@ -48,4 +48,4 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 echo "✅ Clean fresh setup complete!"
 echo "🌐 API Documentation: http://localhost:8000/docs"
-echo "🐘 PgAdmin: http://localhost:5050" 
+echo "🐘 CloudBeaver: http://localhost:8978" 

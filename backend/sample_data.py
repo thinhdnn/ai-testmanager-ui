@@ -31,15 +31,13 @@ def create_sample_data():
         admin_user = UserCreate(
             username="admin",
             email="admin@testmanager.com",
-            password="admin123",
-            created_by="system"
+            password="admin123"
         )
         
         test_user = UserCreate(
             username="tester1",
             email="tester1@testmanager.com", 
-            password="test123",
-            created_by="admin"
+            password="test123"
         )
         
         # Check if users already exist

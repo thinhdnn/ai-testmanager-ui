@@ -7,6 +7,8 @@ from ...schemas.project import Project, ProjectCreate, ProjectUpdate, ProjectWit
 from ...schemas.project_setting import ProjectSetting, ProjectSettingCreate, ProjectSettingUpdate
 from ...schemas.release import Release, ReleaseCreate, ReleaseUpdate, ReleaseSummary, ReleaseTestCase, ReleaseTestCaseCreate
 from ...crud import project as crud_project, project_setting as crud_setting, release as crud_release
+from ...auth import current_active_user
+from ...models.user import User
 
 router = APIRouter()
 
@@ -14,17 +16,19 @@ router = APIRouter()
 @router.post("/", response_model=Project, status_code=status.HTTP_201_CREATED)
 def create_project(
     project: ProjectCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(current_active_user)
 ):
     """Create new project"""
-    return crud_project.create_project(db=db, project=project, created_by=project.created_by or "system")
+    return crud_project.create_project(db=db, project=project, created_by=str(current_user.id))
 
 
 @router.get("/", response_model=List[Project])
 def read_projects(
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(current_active_user)
 ):
     """Get all projects"""
     projects = crud_project.get_projects(db, skip=skip, limit=limit)
@@ -35,7 +39,8 @@ def read_projects(
 def read_projects_with_stats(
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(current_active_user)
 ):
     """Get all projects with statistics in one call"""
     from ...crud import test_result as crud_result
@@ -76,7 +81,8 @@ def read_projects_with_stats(
 @router.get("/{project_id}", response_model=ProjectWithDetails)
 def read_project(
     project_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(current_active_user)
 ):
     """Get project by ID with statistics"""
     db_project = crud_project.get_project(db, project_id=project_id)
@@ -100,20 +106,22 @@ def read_project(
 def update_project(
     project_id: str,
     project: ProjectUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(current_active_user)
 ):
     """Update project"""
     db_project = crud_project.get_project(db, project_id=project_id)
     if db_project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    return crud_project.update_project(db=db, project_id=project_id, project=project)
+    return crud_project.update_project(db=db, project_id=project_id, project=project, updated_by=str(current_user.id))
 
 
 @router.delete("/{project_id}")
 def delete_project(
     project_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(current_active_user)
 ):
     """Delete project"""
     db_project = crud_project.get_project(db, project_id=project_id)

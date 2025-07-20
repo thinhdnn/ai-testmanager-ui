@@ -13,18 +13,21 @@ def get_test_case(db: Session, test_case_id: str) -> Optional[TestCase]:
 
 
 def get_test_cases(db: Session, skip: int = 0, limit: int = 100) -> List[TestCase]:
-    results = (
-        db.query(TestCase, User.username.label('author_name'))
-        .outerjoin(User, User.id == TestCase.created_by)
+    # Query test cases first without join
+    test_cases = (
+        db.query(TestCase)
         .offset(skip)
         .limit(limit)
         .all()
     )
     
-    test_cases = []
-    for test_case, author_name in results:
-        test_case.author_name = author_name
-        test_cases.append(test_case)
+    # Then get author names in a separate query
+    for test_case in test_cases:
+        if test_case.created_by:
+            author = db.query(User.username).filter(User.id == test_case.created_by).first()
+            test_case.author_name = author[0] if author else None
+        else:
+            test_case.author_name = None
     
     return test_cases
 
@@ -73,24 +76,35 @@ def get_test_cases_by_project(db: Session, project_id: str, skip: int = 0, limit
 
 
 def get_test_cases_by_status(db: Session, status: str, skip: int = 0, limit: int = 100) -> List[TestCase]:
-    results = (
-        db.query(TestCase, User.username.label('author_name'))
-        .outerjoin(User, User.id == TestCase.created_by)
+    # Query test cases first without join
+    test_cases = (
+        db.query(TestCase)
         .filter(TestCase.status == status)
         .offset(skip)
         .limit(limit)
         .all()
     )
     
-    test_cases = []
-    for test_case, author_name in results:
-        test_case.author_name = author_name
-        test_cases.append(test_case)
+    # Then get author names in a separate query
+    for test_case in test_cases:
+        if test_case.created_by:
+            author = db.query(User.username).filter(User.id == test_case.created_by).first()
+            test_case.author_name = author[0] if author else None
+        else:
+            test_case.author_name = None
     
     return test_cases
 
 
 def create_test_case(db: Session, test_case: TestCaseCreate) -> TestCase:
+    from ..models.project import Project
+    
+    # Check if project exists
+    project = db.query(Project).filter(Project.id == test_case.project_id).first()
+    if not project:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Project not found")
+    
     db_test_case = TestCase(
         name=test_case.name,
         project_id=test_case.project_id,

@@ -1,47 +1,33 @@
-from pydantic import BaseModel, EmailStr
 from typing import Optional
-from uuid import UUID
+from pydantic import BaseModel, EmailStr
 from datetime import datetime
+from fastapi_users import schemas
+from uuid import UUID
 
 
-class UserBase(BaseModel):
-    email: Optional[EmailStr] = None
+class UserRead(schemas.BaseUser):
     username: str
-    is_active: bool = True
-
-
-class UserCreate(UserBase):
-    password: str
-    created_by: Optional[str] = None
-
-
-class UserUpdate(BaseModel):
-    email: Optional[EmailStr] = None
-    username: Optional[str] = None
-    password: Optional[str] = None
-    is_active: Optional[bool] = None
-    updated_by: Optional[str] = None
-
-
-class UserInDB(UserBase):
-    id: UUID
-    created_at: datetime
-    updated_at: Optional[datetime] = None
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
-    
+
     class Config:
         from_attributes = True
 
 
-class User(UserInDB):
-    pass
+class UserCreate(schemas.BaseUserCreate):
+    username: str
 
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str
+class UserUpdate(schemas.BaseUserUpdate):
+    username: Optional[str] = None
 
 
-class TokenData(BaseModel):
-    username: Optional[str] = None 
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class UserRegister(BaseModel):
+    email: EmailStr
+    username: str
+    password: str 

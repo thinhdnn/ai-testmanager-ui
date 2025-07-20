@@ -10,6 +10,7 @@ import logging
 from .config import settings
 from .database import engine, get_db
 from .models import *
+from .database import Base
 from .api.api import api_router
 
 # Configure logging
@@ -17,7 +18,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Create tables
-BaseModel.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 # Create FastAPI app
 app = FastAPI(

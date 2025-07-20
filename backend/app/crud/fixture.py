@@ -12,18 +12,20 @@ def get_fixture(db: Session, fixture_id: str) -> Optional[Fixture]:
 
 
 def get_fixtures(db: Session, skip: int = 0, limit: int = 100) -> List[Fixture]:
-    results = (
-        db.query(Fixture, User.username.label('author_name'))
-        .outerjoin(User, User.id == Fixture.created_by)
+    fixtures = (
+        db.query(Fixture)
         .offset(skip)
         .limit(limit)
         .all()
     )
     
-    fixtures = []
-    for fixture, author_name in results:
-        fixture.author_name = author_name
-        fixtures.append(fixture)
+    # Get author names in a separate query
+    for fixture in fixtures:
+        if fixture.created_by:
+            author = db.query(User.username).filter(User.id == fixture.created_by).first()
+            fixture.author_name = author[0] if author else None
+        else:
+            fixture.author_name = None
     
     return fixtures
 
@@ -71,6 +73,14 @@ def get_fixtures_by_project(db: Session, project_id: str, skip: int = 0, limit: 
 
 
 def create_fixture(db: Session, fixture: FixtureCreate) -> Fixture:
+    from ..models.project import Project
+    
+    # Check if project exists
+    project = db.query(Project).filter(Project.id == fixture.project_id).first()
+    if not project:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Project not found")
+    
     db_fixture = Fixture(
         name=fixture.name,
         project_id=fixture.project_id,

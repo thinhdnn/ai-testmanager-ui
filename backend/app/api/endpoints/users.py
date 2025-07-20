@@ -3,13 +3,13 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from ...database import get_db
-from ...schemas.user import User, UserCreate, UserUpdate
+from ...schemas.user import UserRead, UserCreate, UserUpdate
 from ...crud import user as crud_user
 
 router = APIRouter()
 
 
-@router.post("/", response_model=User, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def create_user(
     user: UserCreate,
     db: Session = Depends(get_db)
@@ -32,7 +32,7 @@ def create_user(
     return crud_user.create_user(db=db, user=user)
 
 
-@router.get("/", response_model=List[User])
+@router.get("/", response_model=List[UserRead])
 def read_users(
     skip: int = 0,
     limit: int = 100,
@@ -43,7 +43,7 @@ def read_users(
     return users
 
 
-@router.get("/{user_id}", response_model=User)
+@router.get("/{user_id}", response_model=UserRead)
 def read_user(
     user_id: int,
     db: Session = Depends(get_db)
@@ -55,7 +55,7 @@ def read_user(
     return db_user
 
 
-@router.put("/{user_id}", response_model=User)
+@router.put("/{user_id}", response_model=UserRead)
 def update_user(
     user_id: int,
     user: UserUpdate,
