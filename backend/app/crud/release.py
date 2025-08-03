@@ -1,8 +1,10 @@
 from sqlalchemy.orm import Session, joinedload
 from typing import Optional, List
+from uuid import UUID
 
 from ..models.sprint import Release, ReleaseTestCase
 from ..models.test_case import TestCase
+from ..models.user import User
 from ..schemas.release import ReleaseCreate, ReleaseUpdate, ReleaseTestCaseCreate, ReleaseTestCaseUpdate
 
 
@@ -213,9 +215,21 @@ def get_project_releases_summary(db: Session, project_id: str) -> List[dict]:
     summary = []
     for release in releases:
         stats = get_release_stats(db, str(release.id))
+        
+        # Populate author_name
+        author_name = None
+        if release.created_by:
+            try:
+                user = db.query(User).filter(User.id == UUID(release.created_by)).first()
+                author_name = user.username if user else None
+            except ValueError:
+                # Handle case where created_by is not a valid UUID
+                author_name = None
+        
         summary.append({
             **release.__dict__,
-            "stats": stats
+            "stats": stats,
+            "author_name": author_name
         })
     
     return summary 

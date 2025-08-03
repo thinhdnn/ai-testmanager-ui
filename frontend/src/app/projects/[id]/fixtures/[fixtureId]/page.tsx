@@ -8,7 +8,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { apiClient } from "@/lib/apiClient"
+import { GripVertical, ListOrdered, MoreHorizontal } from "lucide-react"
 
 interface FixtureDetail {
   id: string
@@ -20,6 +23,7 @@ interface FixtureDetail {
   updated_at: string
   created_by: string
   updated_by: string
+  author_name: string
 }
 
 interface Step {
@@ -56,6 +60,10 @@ export default function FixtureDetailPage() {
   const [fixture, setFixture] = useState<FixtureDetail | null>(null)
   const [steps, setSteps] = useState<Step[]>([])
   const [versions, setVersions] = useState<Version[]>([])
+  const [moveStepOpen, setMoveStepOpen] = useState(false)
+  const [movingStepId, setMovingStepId] = useState<string | null>(null)
+  const [targetPosition, setTargetPosition] = useState<number>(1)
+  const [moving, setMoving] = useState(false)
 
   useEffect(() => {
     if (!fixtureId) return
@@ -139,6 +147,58 @@ export default function FixtureDetailPage() {
     })
   }
 
+  const handleOpenMoveStep = (stepId: string) => {
+    const step = steps.find(s => s.id === stepId)
+    if (step) {
+      setMovingStepId(stepId)
+      setTargetPosition(step.order)
+      setMoveStepOpen(true)
+    }
+  }
+
+  const handleMoveStep = async () => {
+    if (!movingStepId) return
+    
+    try {
+      setMoving(true)
+      const currentStep = steps.find(s => s.id === movingStepId)
+      if (!currentStep) return
+
+      // Validate target position
+      if (targetPosition < 1 || targetPosition > steps.length) {
+        alert(`Please enter a position between 1 and ${steps.length}`)
+        return
+      }
+
+      // Check if already at target position
+      if (currentStep.order === targetPosition) {
+        setMoveStepOpen(false)
+        return
+      }
+
+      // Send only step UUID and new order to backend
+      await apiClient(`/steps/fixtures/${fixtureId}/steps/reorder`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          step_id: movingStepId,
+          new_order: targetPosition
+        }),
+        headers: { "Content-Type": "application/json" }
+      })
+
+      // Reload steps
+      const stepsData = await apiClient(`/steps/fixtures/${fixtureId}/steps`)
+      setSteps(stepsData)
+      
+      setMoveStepOpen(false)
+    } catch (err) {
+      console.error('Error moving step:', err)
+      alert('Failed to move step. Please try again.')
+    } finally {
+      setMoving(false)
+    }
+  }
+
   return (
     <AppLayout title={fixture.name}>
       <div className="container mx-auto p-6 space-y-6">
@@ -157,7 +217,7 @@ export default function FixtureDetailPage() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
-                  {fixture.created_by || "Unknown"}
+                  {fixture.author_name || fixture.created_by || "Unknown"}
                 </span>
                 <span className="flex items-center gap-1">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -234,6 +294,22 @@ export default function FixtureDetailPage() {
                     </svg>
                   </div>
                   Fixture Steps
+                  {steps.length > 0 && (
+                    <Button size="icon" variant="outline" onClick={async () => {
+                      try {
+                        await apiClient(`/steps/fixtures/${fixtureId}/steps/auto-reorder`, {
+                          method: "PATCH"
+                        })
+                        // Reload steps
+                        const stepsData = await apiClient(`/steps/fixtures/${fixtureId}/steps`)
+                        setSteps(stepsData)
+                      } catch (err) {
+                        console.error('Error reordering steps:', err)
+                      }
+                    }} title="Auto Reorder Steps" className="ml-auto">
+                      <ListOrdered className="w-4 h-4" />
+                    </Button>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -245,14 +321,28 @@ export default function FixtureDetailPage() {
                           <div className="flex-shrink-0 w-8 h-8 bg-blue-100 dark:bg-blue-900/20 rounded-full flex items-center justify-center">
                             <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">{step.order}</span>
                           </div>
+                          <div className="flex-shrink-0 flex items-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing" title="Drag to reorder">
+                            <GripVertical className="w-4 h-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" />
+                          </div>
                           <div className="flex-1 space-y-2">
                             <div className="flex items-center justify-between">
                               <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">
                                 {step.action.charAt(0).toUpperCase() + step.action.slice(1)}
                               </h4>
-                              {step.disabled && (
-                                <Badge variant="outline" className="text-xs text-red-600 border-red-300">Disabled</Badge>
-                              )}
+                              <div className="flex items-center gap-2">
+                                {step.disabled && (
+                                  <Badge variant="outline" className="text-xs text-red-600 border-red-300">Disabled</Badge>
+                                )}
+                                <Button 
+                                  size="icon" 
+                                  variant="ghost" 
+                                  onClick={() => handleOpenMoveStep(step.id)}
+                                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  title="Move Step"
+                                >
+                                  <MoreHorizontal className="w-3 h-3" />
+                                </Button>
+                              </div>
                             </div>
                             
                             {(step.data || step.expected) && (
@@ -361,6 +451,61 @@ export default function FixtureDetailPage() {
           </TabsContent>
         </Tabs>
       </div>
+      
+      {/* Move Step Dialog */}
+      <Dialog open={moveStepOpen} onOpenChange={setMoveStepOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+              </svg>
+              Move Step
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              Enter the target position for this step (1 - {steps.length}):
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="target-position" className="text-sm font-medium">
+                Target Position
+              </label>
+              <Input
+                id="target-position"
+                type="number"
+                min={1}
+                max={steps.length}
+                value={targetPosition}
+                onChange={(e) => setTargetPosition(Number(e.target.value))}
+                placeholder={`1 - ${steps.length}`}
+                className="w-full"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMoveStepOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleMoveStep}
+              disabled={moving || targetPosition < 1 || targetPosition > steps.length}
+            >
+              {moving ? (
+                <>
+                  <svg className="w-4 h-4 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Moving...
+                </>
+              ) : (
+                'Move Step'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   )
 } 

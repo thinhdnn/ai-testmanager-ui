@@ -36,6 +36,7 @@ class Fixture(FixtureBase):
     updated_by: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    author_name: Optional[str] = None
 
     @validator('id')
     def convert_id_to_str(cls, v):

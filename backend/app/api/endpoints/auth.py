@@ -1,5 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...auth import fastapi_users, current_active_user, auth_backend
@@ -46,21 +45,4 @@ async def get_current_user(user: User = Depends(current_active_user)):
     return user
 
 
-@router.post("/login")
-async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    session: AsyncSession = Depends(get_async_session)
-):
-    """Login endpoint using OAuth2 password flow"""
-    try:
-        # Use fastapi-users login
-        response = await fastapi_users.get_auth_router(auth_backend).routes[0].endpoint(
-            form_data, session
-        )
-        return response
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) 
+ 

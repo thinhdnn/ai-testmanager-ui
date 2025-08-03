@@ -6,22 +6,37 @@ import { cn } from "@/lib/utils"
 interface MainContentProps {
   children: React.ReactNode
   className?: string
-  title?: string
+  maxWidth?: "full" | "centered" | "compact"
+  spacing?: "sm" | "md" | "lg"
 }
 
-export function MainContent({ children, className, title }: MainContentProps) {
+export function MainContent({ 
+  children, 
+  className, 
+  maxWidth = "full",
+  spacing = "lg"
+}: MainContentProps) {
+  const maxWidthClasses = {
+    full: "",
+    centered: "max-w-7xl mx-auto",
+    compact: "max-w-4xl mx-auto"
+  }
+
+  const spacingClasses = {
+    sm: "space-y-4",
+    md: "space-y-5", 
+    lg: "space-y-6"
+  }
+
   return (
     <div className={cn("flex-1 flex flex-col", className)}>
-      {/* Header area for title if provided */}
-      {title && (
-        <div className="border-b border-border/10 p-6">
-          <h1 className="text-2xl font-semibold text-foreground">{title}</h1>
-        </div>
-      )}
-      
-      {/* Main content area with custom styling */}
+      {/* Main content area with standard layout */}
       <div className="flex-1">
-        <div className="main-content-area">
+        <div className={cn(
+          "main-content-area",
+          maxWidthClasses[maxWidth],
+          spacingClasses[spacing]
+        )}>
           {children}
         </div>
       </div>

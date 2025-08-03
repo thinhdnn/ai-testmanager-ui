@@ -43,4 +43,17 @@ class StepInDB(StepBase):
 
 
 class Step(StepInDB):
-    pass 
+    pass
+
+
+class StepReorder(BaseModel):
+    step_id: str
+    new_order: int
+    
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Validate step_id is a valid UUID
+        try:
+            UUID(self.step_id)
+        except ValueError:
+            raise ValueError("step_id must be a valid UUID") 

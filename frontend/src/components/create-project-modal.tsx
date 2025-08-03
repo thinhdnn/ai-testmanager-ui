@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { apiClient } from "@/lib/apiClient"
+import { useAuth } from "@/contexts/AuthContext"
 
 interface CreateProjectModalProps {
   open: boolean
@@ -28,6 +29,7 @@ export function CreateProjectModal({ open, onOpenChange, onProjectCreated }: Cre
   })
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string>("")
+  const { user } = useAuth()
 
   const handleInputChange = (field: keyof ProjectFormData, value: string) => {
     setFormData(prev => ({
@@ -48,7 +50,7 @@ export function CreateProjectModal({ open, onOpenChange, onProjectCreated }: Cre
     setError("")
 
     try {
-      await apiClient("/projects", {
+      await apiClient("/projects/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -57,7 +59,7 @@ export function CreateProjectModal({ open, onOpenChange, onProjectCreated }: Cre
           name: formData.name.trim(),
           description: formData.description.trim() || null,
           environment: formData.environment,
-          created_by: "user" // You can replace this with actual user ID
+          created_by: user?.id
         })
       })
 

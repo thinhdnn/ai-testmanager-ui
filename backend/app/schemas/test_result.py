@@ -48,7 +48,7 @@ class TestResultHistoryInDB(TestResultHistoryBase):
 
 
 class TestResultHistory(TestResultHistoryInDB):
-    pass
+    author_name: Optional[str] = None
 
 
 class TestCaseExecutionBase(BaseModel):

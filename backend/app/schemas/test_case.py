@@ -23,8 +23,18 @@ class TestCaseBase(BaseModel):
     @validator('tags')
     def convert_tags_to_list(cls, v):
         if isinstance(v, str):
-            return v.split(',') if v else []
-        return v or []
+            # Clean the string and split by comma
+            cleaned = v.strip()
+            if not cleaned:
+                return []
+            # Split by comma and clean each tag
+            tags = [tag.strip().strip('{}').strip() for tag in cleaned.split(',')]
+            # Filter out empty tags
+            return [tag for tag in tags if tag]
+        elif isinstance(v, list):
+            # Clean each tag in the list
+            return [str(tag).strip().strip('{}').strip() for tag in v if tag]
+        return []
 
 
 class TestCaseCreate(TestCaseBase):

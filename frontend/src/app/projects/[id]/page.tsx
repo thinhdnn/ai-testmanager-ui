@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useParams } from "next/navigation"
+import React, { useState, useEffect } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import { notFound } from "next/navigation"
 import { AppLayout } from "@/components/app-layout"
 import { Badge } from "@/components/ui/badge"
@@ -19,6 +19,7 @@ import type { TestCase } from "@/lib/columns/test-case-columns"
 import type { Fixture } from "@/lib/columns/fixture-columns"
 import type { TestExecution } from "@/lib/columns/test-execution-columns"
 import type { Release } from "@/lib/columns/release-columns"
+import { useAuth } from '@/contexts/AuthContext'
 
 // Define a type for the project object
 interface ProjectDetail {
@@ -41,7 +42,6 @@ export default function ProjectDetailPage() {
   const [releases, setReleases] = useState<Release[]>([])
   const [activeTab, setActiveTab] = useState("test-cases")
   const [showCreateTestCaseModal, setShowCreateTestCaseModal] = useState(false)
-  console.log("showCreateTestCaseModal state:", showCreateTestCaseModal)
 
   useEffect(() => {
     if (!id) return
@@ -68,9 +68,9 @@ export default function ProjectDetailPage() {
           id: String(tc.id),
           title: tc.name,
           status: tc.status,
-          author: tc.created_by || "Unknown",
+          author: tc.author_name || tc.created_by || "Unknown",
           lastRun: tc.last_run || "",
-          tag: typeof tc.tags === 'string' ? tc.tags.split(',').map((tag: string) => tag.trim()) : [],
+          tag: Array.isArray(tc.tags) ? tc.tags : (typeof tc.tags === 'string' ? tc.tags.split(',').map((tag: string) => tag.trim()) : []),
         })))
         
         // Map backend test results to frontend executions format
@@ -80,7 +80,7 @@ export default function ProjectDetailPage() {
           status: exec.success ? "passed" : "failed",
           startTime: exec.created_at || "",
           duration: exec.execution_time ? `${exec.execution_time}ms` : "0ms",
-          executor: exec.created_by || "System",
+          executor: exec.author_name || exec.created_by || "System",
           environment: exec.browser || "Unknown",
         })))
         
@@ -91,7 +91,7 @@ export default function ProjectDetailPage() {
           type: f.type,
           status: "active" as const, // Backend doesn't have status field, default to active
           lastModified: f.updated_at || f.created_at || "",
-          author: f.created_by || "Unknown",
+          author: f.author_name || f.created_by || "Unknown",
           environment: "development" as const, // Backend doesn't have environment, default
         })))
         
@@ -102,7 +102,7 @@ export default function ProjectDetailPage() {
           name: r.name,
           status: r.status,
           date: r.created_at || "",
-          author: r.created_by || "Unknown",
+          author: r.author_name || r.created_by || "Unknown",
         })))
       })
       .catch((err) => {
@@ -170,9 +170,9 @@ export default function ProjectDetailPage() {
           id: String(tc.id),
           title: tc.name,
           status: tc.status,
-          author: tc.created_by || "Unknown",
+          author: tc.author_name || tc.created_by || "Unknown",
           lastRun: tc.last_run || "",
-          tag: typeof tc.tags === 'string' ? tc.tags.split(',').map((tag: string) => tag.trim()) : [],
+          tag: Array.isArray(tc.tags) ? tc.tags : (typeof tc.tags === 'string' ? tc.tags.split(',').map((tag: string) => tag.trim()) : []),
         })))
       })
       .catch((err) => {
@@ -212,7 +212,7 @@ export default function ProjectDetailPage() {
 
   return (
     <AppLayout title={project.name}>
-      <div className="container mx-auto p-6 space-y-6">
+      <div className="space-y-6">
         {/* Project Overview Card */}
         <Card>
           <CardHeader>
@@ -336,6 +336,7 @@ export default function ProjectDetailPage() {
 function ConfigurationForm() {
   const params = useParams<{ id: string }>()
   const projectId = params?.id
+  const { user } = useAuth()
   
   const [timeoutValue, setTimeoutValue] = useState(30000)
   const [expectTimeout, setExpectTimeout] = useState(10000)
@@ -405,7 +406,7 @@ function ConfigurationForm() {
       // Update each setting via API
       await Promise.all(
         settingsToSave.map(setting =>
-          apiClient(`/projects/${projectId}/settings/${setting.key}?value=${encodeURIComponent(setting.value)}&updated_by=user`, {
+          apiClient(`/projects/${projectId}/settings/${setting.key}?value=${encodeURIComponent(setting.value)}&updated_by=${user?.id}`, {
             method: 'PUT',
           })
         )

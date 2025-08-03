@@ -4,16 +4,23 @@ import React, { useState } from "react"
 import { Sidebar } from "./sidebar"
 import { MainContent } from "./main-content"
 import { UserProfile } from "./user-profile"
-import { useUser } from "@/contexts/UserContext"
 
 interface AppLayoutProps {
   children: React.ReactNode
   title?: string
+  actions?: React.ReactNode
+  maxWidth?: "full" | "centered" | "compact"
+  spacing?: "sm" | "md" | "lg"
 }
 
-export function AppLayout({ children, title }: AppLayoutProps) {
+export function AppLayout({ 
+  children, 
+  title, 
+  actions,
+  maxWidth = "full",
+  spacing = "lg"
+}: AppLayoutProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
-  const user = useUser();
 
   const toggleSidebar = () => {
     setIsSidebarCollapsed(!isSidebarCollapsed)
@@ -30,23 +37,31 @@ export function AppLayout({ children, title }: AppLayoutProps) {
       {/* Main content area */}
       <div className={`main-content-container ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
         {/* Top header with user profile */}
-        <header className="header-container">
+        <header className="header-container py-8 mb-6 border-b border-border/10 px-6">
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-4">
               {title && (
-                <h1 className="text-xl font-semibold text-foreground">
+                <h1 className="text-xl font-semibold text-foreground mb-2">
                   {title}
                 </h1>
               )}
+              {actions && (
+                <div className="flex items-center gap-3">
+                  {actions}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-4">
-              <UserProfile user={user ?? undefined} />
+              <UserProfile />
             </div>
           </div>
         </header>
         
-        {/* Main content */}
-        <MainContent>
+        {/* Main content with standard layout */}
+        <MainContent 
+          maxWidth={maxWidth}
+          spacing={spacing}
+        >
           {children}
         </MainContent>
       </div>

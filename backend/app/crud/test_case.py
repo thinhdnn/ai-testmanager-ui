@@ -9,7 +9,19 @@ from ..schemas.test_case import TestCaseCreate, TestCaseUpdate
 
 
 def get_test_case(db: Session, test_case_id: str) -> Optional[TestCase]:
-    return db.query(TestCase).filter(TestCase.id == test_case_id).first()
+    test_case = db.query(TestCase).filter(TestCase.id == test_case_id).first()
+    
+    if test_case and test_case.created_by:
+        try:
+            # Validate that created_by is a valid UUID
+            created_by_uuid = UUID(test_case.created_by)
+            author = db.query(User.username).filter(User.id == created_by_uuid).first()
+            test_case.author_name = author[0] if author else None
+        except ValueError:
+            # If created_by is not a valid UUID, set author_name to None
+            test_case.author_name = None
+    
+    return test_case
 
 
 def get_test_cases(db: Session, skip: int = 0, limit: int = 100) -> List[TestCase]:
@@ -24,8 +36,14 @@ def get_test_cases(db: Session, skip: int = 0, limit: int = 100) -> List[TestCas
     # Then get author names in a separate query
     for test_case in test_cases:
         if test_case.created_by:
-            author = db.query(User.username).filter(User.id == test_case.created_by).first()
-            test_case.author_name = author[0] if author else None
+            try:
+                # Validate that created_by is a valid UUID
+                created_by_uuid = UUID(test_case.created_by)
+                author = db.query(User.username).filter(User.id == created_by_uuid).first()
+                test_case.author_name = author[0] if author else None
+            except ValueError:
+                # If created_by is not a valid UUID, set author_name to None
+                test_case.author_name = None
         else:
             test_case.author_name = None
     
@@ -58,8 +76,15 @@ def get_test_cases_by_project(db: Session, project_id: str, skip: int = 0, limit
         # Then get author names in a separate query
         for test_case in test_cases:
             if test_case.created_by:
-                author = db.query(User.username).filter(User.id == test_case.created_by).first()
-                test_case.author_name = author[0] if author else None
+                try:
+                    # Validate that created_by is a valid UUID
+                    created_by_uuid = UUID(test_case.created_by)
+                    author = db.query(User.username).filter(User.id == created_by_uuid).first()
+                    test_case.author_name = author[0] if author else None
+                except ValueError:
+                    # If created_by is not a valid UUID, set author_name to None
+                    logger.warning(f"Invalid UUID in created_by field: {test_case.created_by}")
+                    test_case.author_name = None
             else:
                 test_case.author_name = None
         
@@ -88,8 +113,14 @@ def get_test_cases_by_status(db: Session, status: str, skip: int = 0, limit: int
     # Then get author names in a separate query
     for test_case in test_cases:
         if test_case.created_by:
-            author = db.query(User.username).filter(User.id == test_case.created_by).first()
-            test_case.author_name = author[0] if author else None
+            try:
+                # Validate that created_by is a valid UUID
+                created_by_uuid = UUID(test_case.created_by)
+                author = db.query(User.username).filter(User.id == created_by_uuid).first()
+                test_case.author_name = author[0] if author else None
+            except ValueError:
+                # If created_by is not a valid UUID, set author_name to None
+                test_case.author_name = None
         else:
             test_case.author_name = None
     

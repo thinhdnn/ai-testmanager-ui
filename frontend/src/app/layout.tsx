@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { UserProvider, User } from "@/contexts/UserContext";
+import { AuthProvider } from "@/contexts/AuthContext";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -18,19 +18,12 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Static user for demo; replace with real auth/session logic as needed
-  const user: User = {
-    name: "Alex Johnson",
-    email: "alex.johnson@company.com",
-    avatar: undefined,
-  };
-
   return (
     <html lang="en">
       <body className={`${inter.variable} antialiased`}>
-        <UserProvider user={user}>
+        <AuthProvider>
           {children}
-        </UserProvider>
+        </AuthProvider>
       </body>
     </html>
   );

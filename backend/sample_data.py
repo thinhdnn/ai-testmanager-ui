@@ -227,6 +227,47 @@ def create_sample_data():
             step_count += 1
             print(f"Created step: {db_step.action} (order: {db_step.order})")
         
+        # Create versions for test cases with steps
+        print("Creating versions for test cases...")
+        from app.models.versioning import TestCaseVersion, StepVersion
+        
+        for test_case in created_test_cases:
+            # Check if test case has steps
+            test_case_steps = db.query(crud_step.Step).filter(
+                crud_step.Step.test_case_id == test_case.id
+            ).all()
+            
+            if test_case_steps:
+                # Create version 1.0.0 for test case with steps
+                db_version = TestCaseVersion(
+                    test_case_id=test_case.id,
+                    version="1.0.0",
+                    name=test_case.name,
+                    playwright_script=test_case.playwright_script,
+                    created_by=test_case.created_by
+                )
+                db.add(db_version)
+                db.commit()
+                db.refresh(db_version)
+                
+                # Copy steps to StepVersion table
+                for step in test_case_steps:
+                    step_version = StepVersion(
+                        test_case_version_id=db_version.id,
+                        action=step.action,
+                        data=step.data,
+                        expected=step.expected,
+                        playwright_code=step.playwright_script,
+                        selector=step.selector if hasattr(step, 'selector') else None,
+                        order=step.order,
+                        disabled=step.disabled,
+                        created_by=step.created_by
+                    )
+                    db.add(step_version)
+                
+                db.commit()
+                print(f"Created version 1.0.0 for test case: {test_case.name} with {len(test_case_steps)} steps")
+        
         # Create sample project settings
         print("Creating sample project settings...")
         

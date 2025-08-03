@@ -90,4 +90,5 @@ class ReleaseStats(BaseModel):
 
 class ReleaseSummary(Release):
     """Release with basic statistics"""
-    stats: ReleaseStats 
+    stats: ReleaseStats
+    author_name: Optional[str] = None 

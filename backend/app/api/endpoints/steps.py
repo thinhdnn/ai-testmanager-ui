@@ -4,7 +4,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from ...database import get_db
-from ...schemas.step import Step, StepCreate, StepUpdate
+from ...schemas.step import Step, StepCreate, StepUpdate, StepReorder
 from ...crud import step as crud_step
 from ...models.versioning import StepVersion
 
@@ -141,30 +141,114 @@ def create_fixture_step(
 @router.patch("/test-cases/{test_case_id}/steps/reorder")
 def reorder_test_case_steps(
     test_case_id: str,
-    step_orders: List[dict],  # [{"step_id": "uuid", "order": 1}, ...]
+    reorder_data: StepReorder,
     db: Session = Depends(get_db)
 ):
-    """Reorder steps in a test case"""
-    for item in step_orders:
-        step = crud_step.get_step(db, step_id=item["step_id"])
-        if step and step.test_case_id == test_case_id:
-            step.order = item["order"]
+    """Reorder a single step in a test case"""
+    step_id = reorder_data.step_id
+    new_order = reorder_data.new_order
+    
+    # Get the step to move
+    step_to_move = crud_step.get_step(db, step_id=step_id)
+    if not step_to_move or str(step_to_move.test_case_id) != test_case_id:
+        raise HTTPException(status_code=404, detail="Step not found")
+    
+    # Get all steps for this test case, sorted by current order
+    all_steps = crud_step.get_steps_by_test_case(db, test_case_id=test_case_id)
+    all_steps.sort(key=lambda x: x.order)
+    
+    # Validate new_order
+    if new_order < 1 or new_order > len(all_steps):
+        raise HTTPException(status_code=400, detail=f"new_order must be between 1 and {len(all_steps)}")
+    
+    # Check if step is already at target position
+    if step_to_move.order == new_order:
+        return {"message": "Step is already at target position"}
+    
+    # Remove the step from current position
+    current_order = step_to_move.order
+    
+    # Shift other steps accordingly
+    if new_order > current_order:
+        # Moving down: shift steps between current and target up
+        for step in all_steps:
+            if step.id != step_id and current_order < step.order <= new_order:
+                step.order -= 1
+    else:
+        # Moving up: shift steps between target and current down
+        for step in all_steps:
+            if step.id != step_id and new_order <= step.order < current_order:
+                step.order += 1
+    
+    # Set the target step to new order
+    step_to_move.order = new_order
     
     db.commit()
-    return {"message": "Steps reordered successfully"}
+    return {"message": "Step reordered successfully"}
+
+
+@router.patch("/test-cases/{test_case_id}/steps/auto-reorder")
+def auto_reorder_test_case_steps(
+    test_case_id: str,
+    db: Session = Depends(get_db)
+):
+    """Auto reorder all steps in a test case from 1 to n"""
+    # Get all steps for this test case, sorted by current order
+    steps = crud_step.get_steps_by_test_case(db, test_case_id=test_case_id)
+    steps.sort(key=lambda x: x.order)
+    
+    # Reorder from 1 to n
+    for index, step in enumerate(steps, 1):
+        step.order = index
+    
+    db.commit()
+    return {"message": f"Steps auto-reordered successfully. Total steps: {len(steps)}"}
 
 
 @router.patch("/fixtures/{fixture_id}/steps/reorder")
 def reorder_fixture_steps(
     fixture_id: str,
-    step_orders: List[dict],  # [{"step_id": "uuid", "order": 1}, ...]
+    reorder_data: StepReorder,
     db: Session = Depends(get_db)
 ):
-    """Reorder steps in a fixture"""
-    for item in step_orders:
-        step = crud_step.get_step(db, step_id=item["step_id"])
-        if step and step.fixture_id == fixture_id:
-            step.order = item["order"]
+    """Reorder a single step in a fixture"""
+    step_id = reorder_data.step_id
+    new_order = reorder_data.new_order
+    
+    # Get the step to move
+    step_to_move = crud_step.get_step(db, step_id=step_id)
+    if not step_to_move or str(step_to_move.fixture_id) != fixture_id:
+        raise HTTPException(status_code=404, detail="Step not found")
+    
+    # Get all steps for this fixture, sorted by current order
+    all_steps = crud_step.get_steps_by_fixture(db, fixture_id=fixture_id)
+    all_steps.sort(key=lambda x: x.order)
+    
+    # Validate new_order
+    if new_order < 1 or new_order > len(all_steps):
+        raise HTTPException(status_code=400, detail=f"new_order must be between 1 and {len(all_steps)}")
+    
+    # Check if step is already at target position
+    if step_to_move.order == new_order:
+        return {"message": "Step is already at target position"}
+    
+    # Remove the step from current position
+    current_order = step_to_move.order
+    
+    # Shift other steps accordingly
+    if new_order > current_order:
+        # Moving down: shift steps between current and target up
+        for step in all_steps:
+            if step.id != step_id and current_order < step.order <= new_order:
+                step.order -= 1
+    else:
+        # Moving up: shift steps between target and current down
+        for step in all_steps:
+            if step.id != step_id and new_order <= step.order < current_order:
+                step.order += 1
+    
+    # Set the target step to new order
+    step_to_move.order = new_order
     
     db.commit()
-    return {"message": "Steps reordered successfully"} 
+    return {"message": "Step reordered successfully"} 

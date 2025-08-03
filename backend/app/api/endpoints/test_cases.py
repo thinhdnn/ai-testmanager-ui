@@ -6,7 +6,7 @@ from uuid import UUID
 from ...database import get_db
 from ...schemas.test_case import TestCase, TestCaseCreate, TestCaseUpdate
 from ...crud import test_case as crud_test_case
-from ...models.versioning import TestCaseVersion
+from ...models.versioning import TestCaseVersion, StepVersion
 
 router = APIRouter()
 
@@ -34,6 +34,29 @@ def _create_version(db: Session, test_case, version: str = None):
     )
     
     db.add(db_version)
+    db.commit()
+    db.refresh(db_version)
+    
+    # Copy current steps to StepVersion table
+    from ...models.step import Step
+    current_steps = db.query(Step).filter(
+        Step.test_case_id == test_case.id
+    ).order_by(Step.order).all()
+    
+    for step in current_steps:
+        step_version = StepVersion(
+            test_case_version_id=db_version.id,
+            action=step.action,
+            data=step.data,
+            expected=step.expected,
+            playwright_code=step.playwright_script,
+            selector=step.selector if hasattr(step, 'selector') else None,
+            order=step.order,
+            disabled=step.disabled,
+            created_by=step.created_by
+        )
+        db.add(step_version)
+    
     db.commit()
     return db_version
 
@@ -101,11 +124,18 @@ def update_test_case(
         raise HTTPException(status_code=404, detail="Test case not found")
     
     # Create version before update if requested
+    new_version = None
     if auto_version:
-        _create_version(db, db_test_case)
+        new_version = _create_version(db, db_test_case)
     
     # Update test case  
     updated_test_case = crud_test_case.update_test_case(db=db, test_case_id=test_case_id, test_case=test_case)
+    
+    # Update version field if new version was created
+    if new_version:
+        updated_test_case.version = new_version.version
+        db.commit()
+        db.refresh(updated_test_case)
     
     return updated_test_case
 
@@ -166,9 +196,8 @@ def get_test_case_versions(
             "id": str(version.id),
             "version": version.version,
             "name": version.name,
-            "status": version.status,
-            "is_manual": version.is_manual,
-            "tags": version.tags,
+            "description": version.description,
+            "playwright_script": version.playwright_script,
             "created_at": version.created_at,
             "updated_at": version.updated_at
         }
@@ -234,19 +263,179 @@ def restore_test_case_version(
     # Create version of current state before restore
     _create_version(db, test_case)
     
-    # Update current test case with version data
+    # Update current test case with version data (only fields that exist in TestCaseVersion)
     test_case.name = db_version.name
     test_case.playwright_script = db_version.playwright_script
-    test_case.status = db_version.status
-    test_case.is_manual = db_version.is_manual
-    test_case.tags = db_version.tags
-    test_case.order = db_version.order
     test_case.version = version  # Update current version
+    
+    # Delete current steps
+    from ...models.step import Step
+    db.query(Step).filter(Step.test_case_id == test_case_id).delete()
+    
+    # Restore steps from version
+    step_versions = db.query(StepVersion).filter(
+        StepVersion.test_case_version_id == db_version.id
+    ).order_by(StepVersion.order).all()
+    
+    for step_version in step_versions:
+        new_step = Step(
+            test_case_id=test_case_id,
+            action=step_version.action,
+            data=step_version.data,
+            expected=step_version.expected,
+            playwright_script=step_version.playwright_code,
+            order=step_version.order,
+            disabled=step_version.disabled,
+            created_by=step_version.created_by
+        )
+        db.add(new_step)
     
     db.commit()
     db.refresh(test_case)
-    
+
+    # Lấy version mới nhất sau khi restore
+    latest_version = (
+        db.query(TestCaseVersion)
+        .filter(TestCaseVersion.test_case_id == test_case_id)
+        .order_by(TestCaseVersion.created_at.desc())
+        .first()
+    )
+    if latest_version:
+        test_case.version = latest_version.version
+        db.commit()
+        db.refresh(test_case)
+
     return test_case
+
+
+@router.post("/{test_case_id}/versions/create", response_model=dict)
+def create_test_case_version(
+    test_case_id: str,
+    reason: str = Query(..., description="Reason for creating version"),
+    db: Session = Depends(get_db)
+):
+    """Create a new version of test case"""
+    # Check if test case exists
+    test_case = crud_test_case.get_test_case(db, test_case_id=test_case_id)
+    if not test_case:
+        raise HTTPException(status_code=404, detail="Test case not found")
+    
+    # Create version
+    version = _create_version(db, test_case)
+    
+    # Update test case version field
+    test_case.version = version.version
+    db.commit()
+    db.refresh(test_case)
+    
+    return {
+        "message": "Version created successfully",
+        "version": version.version,
+        "reason": reason,
+        "created_at": version.created_at
+    }
+
+
+@router.get("/{test_case_id}/versions/{version}/steps", response_model=List[dict])
+def get_test_case_version_steps(
+    test_case_id: str,
+    version: str,
+    db: Session = Depends(get_db)
+):
+    """Get steps for a specific version of a test case"""
+    # Check if test case exists
+    test_case = crud_test_case.get_test_case(db, test_case_id=test_case_id)
+    if not test_case:
+        raise HTTPException(status_code=404, detail="Test case not found")
+    
+    # Get the specific version
+    db_version = db.query(TestCaseVersion).filter(
+        TestCaseVersion.test_case_id == test_case_id,
+        TestCaseVersion.version == version
+    ).first()
+    
+    if not db_version:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Version {version} not found for test case"
+        )
+    
+    # Get step versions for this test case version
+    step_versions = db.query(StepVersion).filter(
+        StepVersion.test_case_version_id == db_version.id
+    ).order_by(StepVersion.order).all()
+    
+    return [
+        {
+            "id": str(step.id),
+            "action": step.action,
+            "data": step.data,
+            "expected": step.expected,
+            "playwright_script": step.playwright_code,
+            "order": step.order,
+            "disabled": step.disabled,
+            "created_at": step.created_at,
+            "updated_at": step.updated_at
+        }
+        for step in step_versions
+    ]
+
+
+@router.post("/{test_case_id}/versions/{version}/copy-steps", response_model=dict)
+def copy_current_steps_to_version(
+    test_case_id: str,
+    version: str,
+    db: Session = Depends(get_db)
+):
+    """Copy current steps to a specific version"""
+    # Check if test case exists
+    test_case = crud_test_case.get_test_case(db, test_case_id=test_case_id)
+    if not test_case:
+        raise HTTPException(status_code=404, detail="Test case not found")
+    
+    # Get the specific version
+    db_version = db.query(TestCaseVersion).filter(
+        TestCaseVersion.test_case_id == test_case_id,
+        TestCaseVersion.version == version
+    ).first()
+    
+    if not db_version:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Version {version} not found for test case"
+        )
+    
+    # Delete existing step versions for this version
+    db.query(StepVersion).filter(
+        StepVersion.test_case_version_id == db_version.id
+    ).delete()
+    
+    # Copy current steps to StepVersion table
+    from ...models.step import Step
+    current_steps = db.query(Step).filter(
+        Step.test_case_id == test_case.id
+    ).order_by(Step.order).all()
+    
+    for step in current_steps:
+        step_version = StepVersion(
+            test_case_version_id=db_version.id,
+            action=step.action,
+            data=step.data,
+            expected=step.expected,
+            playwright_code=step.playwright_script,
+            selector=step.selector if hasattr(step, 'selector') else None,
+            order=step.order,
+            disabled=step.disabled,
+            created_by=step.created_by
+        )
+        db.add(step_version)
+    
+    db.commit()
+    
+    return {
+        "message": f"Copied {len(current_steps)} steps to version {version}",
+        "steps_count": len(current_steps)
+    }
 
 
  

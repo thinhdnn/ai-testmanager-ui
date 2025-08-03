@@ -132,7 +132,6 @@
 .header-container {
   background-color: rgb(253, 253, 253) !important;
   border-bottom: 1px solid rgba(220, 220, 220, 0.3) !important;
-  padding: 12px 16px !important; /* Reduced from 16px 24px */
   display: flex !important;
   justify-content: space-between !important;
   align-items: center !important;

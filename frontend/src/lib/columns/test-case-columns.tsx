@@ -88,13 +88,13 @@ export const columns: ColumnDef<TestCase>[] = [
       const tags = row.getValue("tag") as string[] | undefined;
       return (
         <div className="flex flex-wrap gap-1">
-          {Array.isArray(tags) && tags.length > 0
+          {tags && tags.length > 0
             ? tags.map((tag, idx) => (
-                <Badge key={tag + idx} variant="outline">
-                  {tag.charAt(0).toUpperCase() + tag.slice(1)}
-                </Badge>
+                <span key={`${tag}-${idx}`} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                  {tag}
+                </span>
               ))
-            : null}
+            : <span className="text-muted-foreground text-xs">No tags</span>}
         </div>
       )
     },

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { apiClient } from "@/lib/apiClient"
+import { useAuth } from "@/contexts/AuthContext"
 
 interface CreateTestCaseModalProps {
   open: boolean
@@ -23,6 +24,7 @@ interface TestCaseFormData {
 }
 
 export function CreateTestCaseModal({ open, onOpenChange, onTestCaseCreated, projectId }: CreateTestCaseModalProps) {
+  const { user } = useAuth()
   const [formData, setFormData] = useState<TestCaseFormData>({
     name: "",
     status: "pending",
@@ -91,7 +93,7 @@ export function CreateTestCaseModal({ open, onOpenChange, onTestCaseCreated, pro
           status: formData.status,
           is_manual: formData.isManual,
           tags: formData.tags.trim() || null,
-          created_by: "user" // You can replace this with actual user ID
+          created_by: user?.id // You can replace this with actual user ID
         })
       })
 

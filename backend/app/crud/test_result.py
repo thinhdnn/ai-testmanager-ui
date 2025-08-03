@@ -1,8 +1,10 @@
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime
+from uuid import UUID
 
 from ..models.test_result import TestResultHistory, TestCaseExecution
+from ..models.user import User
 from ..schemas.test_result import (
     TestResultHistoryCreate, 
     TestResultHistoryUpdate,
@@ -22,9 +24,20 @@ def get_test_results(db: Session, skip: int = 0, limit: int = 100) -> List[TestR
 
 
 def get_test_results_by_project(db: Session, project_id: str, skip: int = 0, limit: int = 50) -> List[TestResultHistory]:
-    return db.query(TestResultHistory).filter(
+    results = db.query(TestResultHistory).filter(
         TestResultHistory.project_id == project_id
     ).order_by(TestResultHistory.created_at.desc()).offset(skip).limit(limit).all()
+    
+    # Populate author_name for each result
+    for result in results:
+        if result.created_by:
+            try:
+                user = db.query(User).filter(User.id == UUID(result.created_by)).first()
+                result.author_name = user.username if user else None
+            except ValueError:
+                result.author_name = None
+    
+    return results
 
 
 def get_latest_test_result(db: Session, project_id: str) -> Optional[TestResultHistory]:

@@ -21,12 +21,13 @@ export function TestCaseList({ data }: TestCaseListProps) {
   const statusOptions = Array.from(new Set(data.map(tc => tc.status)))
   const authorOptions = Array.from(new Set(data.map(tc => tc.author)))
   const tagOptions = Array.from(new Set(data.flatMap(tc => tc.tag)))
+  
 
   // Filtered data
   const filtered = data.filter(tc =>
     (status ? tc.status === status : true) &&
     (author ? tc.author === author : true) &&
-    (tag ? tc.tag.includes(tag) : true) &&
+    (tag ? (Array.isArray(tc.tag) ? tc.tag.includes(tag) : tc.tag === tag) : true) &&
     (search ? tc.title.toLowerCase().includes(search.toLowerCase()) : true)
   )
 

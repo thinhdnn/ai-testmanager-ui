@@ -16,3 +16,4 @@ dist
 *.coverage
 .next
 frontend/.env.local
+.DS_Store

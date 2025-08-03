@@ -11,24 +11,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { LogOut, User, Settings } from "lucide-react"
+import { useAuth } from "@/contexts/AuthContext"
 
-interface UserProfileProps {
-  user?: {
-    name: string
-    email: string
-    avatar?: string
-  }
-}
+export function UserProfile() {
+  const { user, logout } = useAuth()
 
-export function UserProfile({ user }: UserProfileProps) {
-  // Default user data
+  // Default user data if not logged in
   const userData = user || {
-    name: "John Doe",
-    email: "john.doe@example.com",
-    avatar: undefined
+    username: "Guest",
+    email: "guest@example.com"
   }
 
-  // Get initials from name
+  // Get initials from username
   const getInitials = (name: string) => {
     return name
       .split(' ')
@@ -38,19 +32,23 @@ export function UserProfile({ user }: UserProfileProps) {
       .slice(0, 2)
   }
 
+  const handleLogout = () => {
+    logout()
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button className="user-profile-container">
           <Avatar className="h-8 w-8">
-            <AvatarImage src={userData.avatar} alt={userData.name} />
+            <AvatarImage src={undefined} alt={userData.username} />
             <AvatarFallback className="bg-primary text-primary-foreground text-sm font-medium">
-              {getInitials(userData.name)}
+              {getInitials(userData.username)}
             </AvatarFallback>
           </Avatar>
           <div className="flex flex-col items-start text-left">
             <span className="text-sm font-medium text-foreground">
-              {userData.name}
+              {userData.username}
             </span>
             <span className="text-xs text-muted-foreground">
               {userData.email}
@@ -70,7 +68,10 @@ export function UserProfile({ user }: UserProfileProps) {
           <span>Settings</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive">
+        <DropdownMenuItem 
+          className="cursor-pointer text-destructive focus:text-destructive"
+          onClick={handleLogout}
+        >
           <LogOut className="mr-2 h-4 w-4" />
           <span>Sign out</span>
         </DropdownMenuItem>
