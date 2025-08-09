@@ -12,8 +12,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+
 import { apiClient } from "@/lib/apiClient"
-import { Zap, Database, CheckCircle, Code, ListOrdered, Ban, PlusCircle, XCircle, ChevronDown, ChevronUp, Edit, Trash2, RotateCcw, GripVertical, MoreHorizontal } from "lucide-react"
+import { Zap, Database, CheckCircle, Code, ListOrdered, Ban, PlusCircle, XCircle, ChevronDown, ChevronUp, Edit, Trash2, RotateCcw, GripVertical, MoreHorizontal, Settings } from "lucide-react"
 
 interface TestCaseDetail {
   id: string
@@ -63,10 +64,30 @@ interface Step {
   playwright_script: string
   order: number
   disabled: boolean
+  referenced_fixture_id?: string
+  referenced_fixture_name?: string
   created_at: string
   updated_at: string
   created_by: string
   updated_by: string
+}
+
+interface TestCaseFixture {
+  fixture_id: string
+  order: number
+  created_at: string
+  created_by: string
+  name: string
+  type: string
+  playwright_script: string
+}
+
+interface AvailableFixture {
+  id: string
+  name: string
+  type: string
+  playwright_script: string
+  created_at: string
 }
 
 export default function TestCaseDetailPage() {
@@ -80,20 +101,26 @@ export default function TestCaseDetailPage() {
   const [executions, setExecutions] = useState<TestCaseExecution[]>([])
   const [stats, setStats] = useState<TestCaseStats | null>(null)
   const [steps, setSteps] = useState<Step[]>([])
+  const [fixtures, setFixtures] = useState<TestCaseFixture[]>([])
+  const [availableFixtures, setAvailableFixtures] = useState<AvailableFixture[]>([])
   const [versions, setVersions] = useState<any[]>([])
   const [viewVersionOpen, setViewVersionOpen] = useState(false)
   const [selectedVersion, setSelectedVersion] = useState<any>(null)
   const [versionSteps, setVersionSteps] = useState<Step[]>([])
   const [addStepOpen, setAddStepOpen] = useState(false)
+  const [addFixtureOpen, setAddFixtureOpen] = useState(false)
+  const [selectedFixtureId, setSelectedFixtureId] = useState<string>("")
   const [newStep, setNewStep] = useState({
     action: "",
     data: "",
     expected: "",
     playwright_script: "",
     order: 1,
-    disabled: false
+    disabled: false,
+    referenced_fixture_id: ""
   })
   const [adding, setAdding] = useState(false)
+  const [addingFixture, setAddingFixture] = useState(false)
   const [showPlaywrightScript, setShowPlaywrightScript] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [editingStepId, setEditingStepId] = useState<string | null>(null)
@@ -108,16 +135,28 @@ export default function TestCaseDetailPage() {
   const [restoringVersion, setRestoringVersion] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState(false)
 
+  // Filter available fixtures based on step order
+  const getFilteredFixtures = () => {
+    if (newStep.order === 1) {
+      // Only show extend fixtures for step 1
+      return availableFixtures.filter(fixture => fixture.type === "extend")
+    } else {
+      // Only show inline fixtures for step 2+
+      return availableFixtures.filter(fixture => fixture.type === "inline")
+    }
+  }
+
   const fetchTestCaseData = async () => {
     setLoading(true)
     setError(null)
     
     try {
-      const [testCaseData, executionsData, statsData, stepsData, versionsData] = await Promise.all([
+      const [testCaseData, executionsData, statsData, stepsData, fixturesData, versionsData] = await Promise.all([
         apiClient(`/test-cases/${testCaseId}`),
         apiClient(`/test-results/test-cases/${testCaseId}/executions?limit=20`),
         apiClient(`/test-results/test-cases/${testCaseId}/stats`),
         apiClient(`/steps/test-cases/${testCaseId}/steps`),
+        apiClient(`/test-cases/${testCaseId}/fixtures`),
         apiClient(`/test-cases/${testCaseId}/versions`)
       ])
       
@@ -130,6 +169,7 @@ export default function TestCaseDetailPage() {
       setExecutions(executionsData)
       setStats(statsData)
       setSteps(stepsData)
+      setFixtures(fixturesData)
       setVersions(versionsData)
     } catch (err: any) {
       if (err.message?.includes("404")) {
@@ -142,10 +182,24 @@ export default function TestCaseDetailPage() {
     }
   }
 
+  const fetchAvailableFixtures = async () => {
+    try {
+      const fixturesData = await apiClient(`/fixtures/?project_id=${projectId}`)
+      setAvailableFixtures(fixturesData)
+    } catch (err: any) {
+      console.error("Failed to load available fixtures:", err)
+    }
+  }
+
   useEffect(() => {
     if (!testCaseId) return
     fetchTestCaseData()
   }, [testCaseId])
+
+  useEffect(() => {
+    if (!projectId) return
+    fetchAvailableFixtures()
+  }, [projectId])
 
   // Reload specific data when tab changes
   useEffect(() => {
@@ -165,6 +219,10 @@ export default function TestCaseDetailPage() {
           case "steps":
             const stepsData = await apiClient(`/steps/test-cases/${testCaseId}/steps`)
             setSteps(stepsData)
+            break
+          case "fixtures":
+            const fixturesData = await apiClient(`/test-cases/${testCaseId}/fixtures`)
+            setFixtures(fixturesData)
             break
           case "details":
             // Reload all data for details tab
@@ -225,7 +283,8 @@ export default function TestCaseDetailPage() {
         expected: "", 
         playwright_script: "", 
         order: steps.length > 0 ? Math.max(...steps.map(s => s.order)) + 1 : 1, 
-        disabled: false 
+        disabled: false,
+        referenced_fixture_id: ""
       })
       setEditMode(false)
       setEditingStepId(null)
@@ -251,7 +310,8 @@ export default function TestCaseDetailPage() {
       expected: step.expected,
       playwright_script: step.playwright_script,
       order: step.order,
-      disabled: step.disabled
+      disabled: step.disabled,
+      referenced_fixture_id: step.referenced_fixture_id || ""
     })
     setEditMode(true)
     setEditingStepId(step.id)
@@ -350,6 +410,77 @@ export default function TestCaseDetailPage() {
       alert('Failed to move step. Please try again.')
     } finally {
       setMoving(false)
+    }
+  }
+
+  // Fixture management functions
+  const handleAddFixture = async () => {
+    if (!selectedFixtureId) {
+      alert("Please select a fixture to add")
+      return
+    }
+
+    setAddingFixture(true)
+    try {
+      await apiClient(`/test-cases/${testCaseId}/fixtures`, {
+        method: "POST",
+        body: JSON.stringify({
+          fixture_id: selectedFixtureId
+        }),
+        headers: { "Content-Type": "application/json" }
+      })
+
+      // Create version for test case
+      await apiClient(`/test-cases/${testCaseId}/versions/create?reason=Added fixture: ${availableFixtures.find(f => f.id === selectedFixtureId)?.name}`, {
+        method: "POST"
+      })
+
+      // Reload fixtures and test case data
+      const [fixturesData, testCaseData] = await Promise.all([
+        apiClient(`/test-cases/${testCaseId}/fixtures`),
+        apiClient(`/test-cases/${testCaseId}`)
+      ])
+      setFixtures(fixturesData)
+      setTestCase(testCaseData)
+      
+      setAddFixtureOpen(false)
+      setSelectedFixtureId("")
+    } catch (err: any) {
+      console.error('Error adding fixture:', err)
+      alert(err.message || 'Failed to add fixture. Please try again.')
+    } finally {
+      setAddingFixture(false)
+    }
+  }
+
+  const handleRemoveFixture = async (fixtureId: string) => {
+    if (!window.confirm("Are you sure you want to remove this fixture from the test case?")) {
+      return
+    }
+
+    try {
+      const fixtureToRemove = fixtures.find(f => f.fixture_id === fixtureId)
+      const fixtureName = fixtureToRemove?.name || "Unknown fixture"
+      
+      await apiClient(`/test-cases/${testCaseId}/fixtures/${fixtureId}`, {
+        method: "DELETE"
+      })
+
+      // Create version for test case
+      await apiClient(`/test-cases/${testCaseId}/versions/create?reason=Removed fixture: ${fixtureName}`, {
+        method: "POST"
+      })
+
+      // Reload fixtures and test case data
+      const [fixturesData, testCaseData] = await Promise.all([
+        apiClient(`/test-cases/${testCaseId}/fixtures`),
+        apiClient(`/test-cases/${testCaseId}`)
+      ])
+      setFixtures(fixturesData)
+      setTestCase(testCaseData)
+    } catch (err: any) {
+      console.error('Error removing fixture:', err)
+      alert('Failed to remove fixture. Please try again.')
     }
   }
 
@@ -855,6 +986,7 @@ export default function TestCaseDetailPage() {
                 <TabsTrigger value="steps" className="flex-1">Steps</TabsTrigger>
                 <TabsTrigger value="versions" className="flex-1">Versions</TabsTrigger>
                 <TabsTrigger value="executions" className="flex-1">Executions</TabsTrigger>
+                <TabsTrigger value="fixtures" className="flex-1">Fixtures</TabsTrigger>
               </TabsList>
               
               <div className="p-6">
@@ -957,8 +1089,17 @@ export default function TestCaseDetailPage() {
                         <div className="grid gap-4">
                           <div className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
                             <Zap className="w-5 h-5 text-yellow-500 flex-shrink-0" />
-                            <label className="block text-sm font-semibold mb-0 w-32 flex-shrink-0">Action <span className="text-red-500">*</span></label>
-                            <Input className="flex-1" placeholder="Action" value={newStep.action} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewStep(s => ({ ...s, action: e.target.value }))} required />
+                            <label className="block text-sm font-semibold mb-0 w-32 flex-shrink-0">
+                              Action {!newStep.referenced_fixture_id && <span className="text-red-500">*</span>}
+                            </label>
+                            <Input 
+                              className="flex-1" 
+                              placeholder={newStep.referenced_fixture_id ? "Action (optional when calling fixture)" : "Action"} 
+                              value={newStep.action} 
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewStep(s => ({ ...s, action: e.target.value }))} 
+                              required={!newStep.referenced_fixture_id}
+                              disabled={!!newStep.referenced_fixture_id}
+                            />
                           </div>
                           <div className="flex gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
                             <Database className="w-5 h-5 text-indigo-500 flex-shrink-0 mt-1" />
@@ -1003,6 +1144,31 @@ export default function TestCaseDetailPage() {
                               )}
                             </div>
                           </div>
+                          <div className="flex gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
+                            <svg className="w-5 h-5 text-orange-500 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            <label className="block text-sm font-semibold mb-0 w-32 flex-shrink-0">Call Fixture</label>
+                            <select 
+                              className="flex-1 p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                              value={newStep.referenced_fixture_id} 
+                              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                                const selectedFixture = availableFixtures.find(f => f.id === e.target.value);
+                                setNewStep(s => ({ 
+                                  ...s, 
+                                  referenced_fixture_id: e.target.value,
+                                  action: selectedFixture ? selectedFixture.name : s.action
+                                }))
+                              }}
+                            >
+                              <option value="">No fixture</option>
+                              {getFilteredFixtures().map((fixture) => (
+                                <option key={fixture.id} value={fixture.id}>
+                                  {fixture.name} ({fixture.type})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                           <div className="flex gap-4 items-center">
                             <div className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800 w-1/2">
                               <ListOrdered className="w-5 h-5 text-blue-400 flex-shrink-0" />
@@ -1014,7 +1180,26 @@ export default function TestCaseDetailPage() {
                                 type="number" 
                                 placeholder="Order" 
                                 value={newStep.order} 
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewStep(s => ({ ...s, order: Number(e.target.value) }))} 
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                  const newOrder = Number(e.target.value);
+                                  setNewStep(s => {
+                                    const updatedStep = { ...s, order: newOrder };
+                                    
+                                    // Clear referenced_fixture_id if it's not compatible with new order
+                                    if (s.referenced_fixture_id) {
+                                      const selectedFixture = availableFixtures.find(f => f.id === s.referenced_fixture_id);
+                                      if (selectedFixture) {
+                                        if ((newOrder === 1 && selectedFixture.type !== "extend") || 
+                                            (newOrder > 1 && selectedFixture.type !== "inline")) {
+                                          updatedStep.referenced_fixture_id = "";
+                                          updatedStep.action = "";
+                                        }
+                                      }
+                                    }
+                                    
+                                    return updatedStep;
+                                  });
+                                }} 
                                 min={1} 
                                 max={steps.length}
                                 disabled={!editMode}
@@ -1089,7 +1274,21 @@ export default function TestCaseDetailPage() {
                                 <div className="flex-1 space-y-2">
                                   <div className="flex items-center justify-between">
                                     <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                                      {step.action.charAt(0).toUpperCase() + step.action.slice(1)}
+                                      {step.referenced_fixture_id ? (
+                                        <Badge 
+                                          variant="outline" 
+                                          className="text-xs text-orange-600 border-orange-300 flex items-center gap-1 cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
+                                          onClick={() => router.push(`/projects/${projectId}/fixtures/${step.referenced_fixture_id}`)}
+                                          title={`Click to view ${step.referenced_fixture_name || 'fixture'}`}
+                                        >
+                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                          </svg>
+                                          {step.referenced_fixture_name || "Fixture"}
+                                        </Badge>
+                                      ) : (
+                                        step.action.charAt(0).toUpperCase() + step.action.slice(1)
+                                      )}
                                     </h4>
                                     <div className="flex items-center gap-2">
                                       {step.disabled && (
@@ -1316,6 +1515,87 @@ export default function TestCaseDetailPage() {
                     </CardContent>
                   </Card>
                 </TabsContent>
+
+                                 <TabsContent value="fixtures" className="space-y-4 mt-0">
+                   <Card className="border-0 shadow-md">
+                     <CardHeader>
+                       <div className="flex items-center justify-between">
+                         <CardTitle className="flex items-center gap-2 text-lg">
+                           <div className="w-6 h-6 bg-yellow-100 dark:bg-yellow-900/20 rounded-md flex items-center justify-center">
+                             <Settings className="w-3 h-3 text-yellow-600 dark:text-yellow-400" />
+                           </div>
+                           Fixtures
+                         </CardTitle>
+                         <Button 
+                           onClick={() => setAddFixtureOpen(true)}
+                           size="sm"
+                           className="flex items-center gap-2"
+                         >
+                           <PlusCircle className="w-4 h-4" />
+                           Add Fixture
+                         </Button>
+                       </div>
+                     </CardHeader>
+                     <CardContent>
+                       <div className="space-y-3">
+                         {fixtures.length > 0 ? (
+                           fixtures.map((fixture, index) => (
+                             <div key={fixture.fixture_id} className="group p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:shadow-md transition-all duration-200 hover:border-yellow-300 dark:hover:border-yellow-600">
+                               <div className="flex items-start gap-4">
+                                 <div className="flex-shrink-0 w-8 h-8 bg-yellow-100 dark:bg-yellow-900/20 rounded-full flex items-center justify-center">
+                                   <span className="text-sm font-semibold text-yellow-600 dark:text-yellow-400">{fixture.order}</span>
+                                 </div>
+                                 <div className="flex-1 space-y-2">
+                                   <div className="flex items-center justify-between">
+                                     <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                                       {fixture.name}
+                                     </h4>
+                                     <div className="flex items-center gap-2">
+                                       <Button 
+                                         size="sm" 
+                                         variant="outline" 
+                                         onClick={() => {
+                                           setSelectedFixtureId(fixture.fixture_id)
+                                           setAddFixtureOpen(true)
+                                         }}
+                                         className="text-xs"
+                                       >
+                                         View Detail
+                                       </Button>
+                                       <Button 
+                                         size="sm" 
+                                         variant="destructive" 
+                                         onClick={() => handleRemoveFixture(fixture.fixture_id)}
+                                         className="text-xs"
+                                       >
+                                         <Trash2 className="w-3 h-3" />
+                                       </Button>
+                                     </div>
+                                   </div>
+                                   
+                                   <div className="text-sm text-gray-600 dark:text-gray-400">
+                                     {fixture.type && (
+                                       <p><strong>Type:</strong> {fixture.type}</p>
+                                     )}
+                                     <p><strong>Order:</strong> {fixture.order}</p>
+                                   </div>
+                                 </div>
+                               </div>
+                             </div>
+                           ))
+                         ) : (
+                           <div className="text-center py-12">
+                             <div className="w-16 h-16 mx-auto bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
+                               <Settings className="w-8 h-8 text-gray-400" />
+                             </div>
+                             <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-1">No Fixtures</h3>
+                             <p className="text-gray-500 dark:text-gray-400">This test case has no fixtures. Click "Add Fixture" to get started.</p>
+                           </div>
+                         )}
+                       </div>
+                     </CardContent>
+                   </Card>
+                 </TabsContent>
               </div>
             </Tabs>
           </div>
@@ -1473,6 +1753,74 @@ export default function TestCaseDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+             {/* Add Fixture Modal */}
+       <Dialog open={addFixtureOpen} onOpenChange={setAddFixtureOpen}>
+         <DialogContent className="max-w-2xl">
+           <DialogHeader>
+             <DialogTitle className="flex items-center gap-2">
+               <Settings className="w-6 h-6 text-yellow-500" />
+               Add Fixture to Test Case
+             </DialogTitle>
+           </DialogHeader>
+           
+           <div className="space-y-4">
+             <div>
+               <label className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2 block">
+                 Select Fixture
+               </label>
+               <select
+                 value={selectedFixtureId}
+                 onChange={(e) => setSelectedFixtureId(e.target.value)}
+                 className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+               >
+                 <option value="">Select a fixture...</option>
+                 {availableFixtures
+                   .filter(fixture => !fixtures.some(tcFixture => tcFixture.fixture_id === fixture.id))
+                   .map(fixture => (
+                     <option key={fixture.id} value={fixture.id}>
+                       {fixture.name} ({fixture.type || 'extend'})
+                     </option>
+                   ))}
+               </select>
+             </div>
+             
+             {selectedFixtureId && (
+               <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800">
+                 <h4 className="font-medium mb-2">Selected Fixture Details</h4>
+                 <div className="space-y-2 text-sm">
+                   <p><strong>Name:</strong> {availableFixtures.find(f => f.id === selectedFixtureId)?.name}</p>
+                   <p><strong>Type:</strong> {availableFixtures.find(f => f.id === selectedFixtureId)?.type || 'extend'}</p>
+                   {availableFixtures.find(f => f.id === selectedFixtureId)?.playwright_script && (
+                     <div>
+                       <p><strong>Script Preview:</strong></p>
+                       <pre className="text-xs bg-gray-100 dark:bg-gray-700 p-2 rounded mt-1 overflow-x-auto">
+                         {availableFixtures.find(f => f.id === selectedFixtureId)?.playwright_script}
+                       </pre>
+                     </div>
+                   )}
+                 </div>
+               </div>
+             )}
+           </div>
+           
+           <DialogFooter className="mt-6">
+             <Button variant="secondary" onClick={() => {
+               setAddFixtureOpen(false)
+               setSelectedFixtureId("")
+             }}>
+               Cancel
+             </Button>
+             <Button 
+               onClick={handleAddFixture}
+               disabled={!selectedFixtureId || addingFixture}
+               className="flex items-center gap-2"
+             >
+               {addingFixture ? "Adding..." : "Add Fixture"}
+             </Button>
+           </DialogFooter>
+         </DialogContent>
+       </Dialog>
     </AppLayout>
   )
 } 

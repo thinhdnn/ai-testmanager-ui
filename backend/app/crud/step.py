@@ -14,27 +14,66 @@ def get_steps(db: Session, skip: int = 0, limit: int = 100) -> List[Step]:
 
 
 def get_steps_by_test_case(db: Session, test_case_id: str) -> List[Step]:
-    return db.query(Step).filter(
+    steps = db.query(Step).filter(
         Step.test_case_id == test_case_id
     ).order_by(Step.order).all()
+    
+    # Add referenced fixture names
+    for step in steps:
+        if step.referenced_fixture_id:
+            from ..models.fixture import Fixture
+            fixture = db.query(Fixture.name).filter(Fixture.id == step.referenced_fixture_id).first()
+            step.referenced_fixture_name = fixture[0] if fixture else "Unknown Fixture"
+    
+    return steps
 
 
 def get_steps_by_fixture(db: Session, fixture_id: str) -> List[Step]:
-    return db.query(Step).filter(
+    steps = db.query(Step).filter(
         Step.fixture_id == fixture_id
     ).order_by(Step.order).all()
+    
+    # Add referenced fixture names
+    for step in steps:
+        if step.referenced_fixture_id:
+            from ..models.fixture import Fixture
+            fixture = db.query(Fixture.name).filter(Fixture.id == step.referenced_fixture_id).first()
+            step.referenced_fixture_name = fixture[0] if fixture else "Unknown Fixture"
+    
+    return steps
 
 
 def create_step(db: Session, step: StepCreate) -> Step:
+    # Validate fixture call rules
+    if step.referenced_fixture_id:
+        from ..models.fixture import Fixture
+        fixture = db.query(Fixture).filter(Fixture.id == step.referenced_fixture_id).first()
+        if not fixture:
+            raise ValueError(f"Fixture with id {step.referenced_fixture_id} not found")
+        
+        # Check fixture type and order validation
+        if fixture.type == "extend" and step.order != 1:
+            raise ValueError("Extend fixtures can only be called at step 1 (order = 1)")
+        elif fixture.type == "inline" and step.order == 1:
+            raise ValueError("Inline fixtures cannot be called at step 1 (order = 1)")
+    
+    # Auto-set action to fixture name if referenced_fixture_id is provided and action is empty
+    action = step.action
+    if step.referenced_fixture_id and not action:
+        from ..models.fixture import Fixture
+        fixture = db.query(Fixture.name).filter(Fixture.id == step.referenced_fixture_id).first()
+        action = fixture[0] if fixture else "Unknown Fixture"
+    
     db_step = Step(
         test_case_id=step.test_case_id,
         fixture_id=step.fixture_id,
-        action=step.action,
+        action=action,
         data=step.data,
         expected=step.expected,
         playwright_script=step.playwright_script,
         order=step.order,
         disabled=step.disabled,
+        referenced_fixture_id=step.referenced_fixture_id,
         created_by=step.created_by
     )
     db.add(db_step)
@@ -46,6 +85,20 @@ def create_step(db: Session, step: StepCreate) -> Step:
 def update_step(db: Session, step_id: str, step: StepUpdate) -> Optional[Step]:
     db_step = get_step(db, step_id)
     if db_step:
+        # Validate fixture call rules if referenced_fixture_id is being updated
+        if step.referenced_fixture_id is not None:
+            from ..models.fixture import Fixture
+            fixture = db.query(Fixture).filter(Fixture.id == step.referenced_fixture_id).first()
+            if not fixture:
+                raise ValueError(f"Fixture with id {step.referenced_fixture_id} not found")
+            
+            # Check fixture type and order validation
+            order = step.order if step.order is not None else db_step.order
+            if fixture.type == "extend" and order != 1:
+                raise ValueError("Extend fixtures can only be called at step 1 (order = 1)")
+            elif fixture.type == "inline" and order == 1:
+                raise ValueError("Inline fixtures cannot be called at step 1 (order = 1)")
+        
         update_data = step.dict(exclude_unset=True)
         for field, value in update_data.items():
             setattr(db_step, field, value)

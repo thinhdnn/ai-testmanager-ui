@@ -26,10 +26,12 @@ def create_step(
     db: Session = Depends(get_db)
 ):
     """Create new step"""
-    # Create step
-    db_step = crud_step.create_step(db=db, step=step)
-    
-    return db_step
+    try:
+        # Create step
+        db_step = crud_step.create_step(db=db, step=step)
+        return db_step
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/{step_id}", response_model=Step)
@@ -55,10 +57,12 @@ def update_step(
     if db_step is None:
         raise HTTPException(status_code=404, detail="Step not found")
     
-    # Update step  
-    updated_step = crud_step.update_step(db=db, step_id=step_id, step=step)
-    
-    return updated_step
+    try:
+        # Update step  
+        updated_step = crud_step.update_step(db=db, step_id=step_id, step=step)
+        return updated_step
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/{step_id}")
@@ -251,4 +255,22 @@ def reorder_fixture_steps(
     step_to_move.order = new_order
     
     db.commit()
-    return {"message": "Step reordered successfully"} 
+    return {"message": "Step reordered successfully"}
+
+
+@router.patch("/fixtures/{fixture_id}/steps/auto-reorder")
+def auto_reorder_fixture_steps(
+    fixture_id: str,
+    db: Session = Depends(get_db)
+):
+    """Auto reorder all steps in a fixture from 1 to n"""
+    # Get all steps for this fixture, sorted by current order
+    steps = crud_step.get_steps_by_fixture(db, fixture_id=fixture_id)
+    steps.sort(key=lambda x: x.order)
+    
+    # Reorder from 1 to n
+    for index, step in enumerate(steps, 1):
+        step.order = index
+    
+    db.commit()
+    return {"message": f"Steps auto-reordered successfully. Total steps: {len(steps)}"} 

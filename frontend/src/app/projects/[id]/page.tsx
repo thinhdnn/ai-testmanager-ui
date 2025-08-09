@@ -15,6 +15,7 @@ import { FixtureList } from "@/components/ui/fixture-list"
 import { ReleaseList } from "@/components/ui/release-list"
 import { Button } from "@/components/ui/button"
 import { CreateTestCaseModal } from "@/components/create-test-case-modal"
+import { CreateFixtureModal } from "@/components/create-fixture-modal"
 import type { TestCase } from "@/lib/columns/test-case-columns"
 import type { Fixture } from "@/lib/columns/fixture-columns"
 import type { TestExecution } from "@/lib/columns/test-execution-columns"
@@ -42,6 +43,7 @@ export default function ProjectDetailPage() {
   const [releases, setReleases] = useState<Release[]>([])
   const [activeTab, setActiveTab] = useState("test-cases")
   const [showCreateTestCaseModal, setShowCreateTestCaseModal] = useState(false)
+  const [showCreateFixtureModal, setShowCreateFixtureModal] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -90,7 +92,7 @@ export default function ProjectDetailPage() {
           name: f.name,
           type: f.type,
           status: "active" as const, // Backend doesn't have status field, default to active
-          lastModified: f.updated_at || f.created_at || "",
+          lastModified: f.updated_at || f.created_at || new Date().toISOString(),
           author: f.author_name || f.created_by || "Unknown",
           environment: "development" as const, // Backend doesn't have environment, default
         })))
@@ -145,8 +147,7 @@ export default function ProjectDetailPage() {
         setShowCreateTestCaseModal(true)
         break
       case "fixture":
-        console.log("Add new fixture")
-        // TODO: Navigate to add fixture page or open modal
+        setShowCreateFixtureModal(true)
         break
       case "execution":
         console.log("Add new execution")
@@ -177,6 +178,26 @@ export default function ProjectDetailPage() {
       })
       .catch((err) => {
         console.error("Failed to refresh test cases:", err)
+      })
+  }
+
+  const handleFixtureCreated = () => {
+    // Refresh fixtures data after creating a new fixture
+    if (!id) return
+    apiClient(`/fixtures/?project_id=${id}`)
+      .then((fixtures) => {
+        setFixtures((fixtures as any[]).map(f => ({
+          id: String(f.id),
+          name: f.name,
+          type: f.type,
+          status: "active" as const, // Backend doesn't have status field, default to active
+          lastModified: f.updated_at || f.created_at || new Date().toISOString(),
+          author: f.author_name || f.created_by || "Unknown",
+          environment: "development" as const, // Backend doesn't have environment, default
+        })))
+      })
+      .catch((err) => {
+        console.error("Failed to refresh fixtures:", err)
       })
   }
 
@@ -327,7 +348,15 @@ export default function ProjectDetailPage() {
         onTestCaseCreated={handleTestCaseCreated}
         projectId={id || ""}
         // Debug log for modal render
-        key={showCreateTestCaseModal ? "open" : "closed"}
+        key={showCreateTestCaseModal ? "testcase-open" : "testcase-closed"}
+      />
+      <CreateFixtureModal
+        open={showCreateFixtureModal}
+        onOpenChange={setShowCreateFixtureModal}
+        onFixtureCreated={handleFixtureCreated}
+        projectId={id || ""}
+        // Debug log for modal render
+        key={showCreateFixtureModal ? "fixture-open" : "fixture-closed"}
       />
     </AppLayout>
   )

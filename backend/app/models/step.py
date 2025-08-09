@@ -15,9 +15,11 @@ class Step(BaseModel):
     playwright_script = Column(Text, nullable=True)
     order = Column(Integer, nullable=False)
     disabled = Column(Boolean, default=False)
+    referenced_fixture_id = Column(UUID(as_uuid=True), ForeignKey("fixtures.id"), nullable=True)  # Fixture to call in this step
     created_by = Column(String, nullable=True)
     updated_by = Column(String, nullable=True)
     
     # Relationships
     test_case = relationship("TestCase", back_populates="steps")
-    fixture = relationship("Fixture", back_populates="steps") 
+    fixture = relationship("Fixture", foreign_keys=[fixture_id], back_populates="steps")
+    referenced_fixture = relationship("Fixture", foreign_keys=[referenced_fixture_id]) 

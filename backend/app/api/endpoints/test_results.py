@@ -180,4 +180,35 @@ def get_recent_test_runs(
         "recent_results": recent_results_serializable  # Use serializable dicts instead of raw models
     }
     
-    return analytics 
+    return analytics
+
+
+# ============ FIXTURE EXECUTION HISTORY ============
+
+@router.get("/fixtures/{fixture_id}/executions", response_model=List[TestCaseExecution])
+def get_fixture_execution_history(
+    fixture_id: str,
+    limit: int = Query(20, ge=1, le=50),
+    db: Session = Depends(get_db)
+):
+    """Get execution history for a fixture"""
+    # For now, fixtures don't have separate executions, so return empty list
+    # In the future, you might want to implement fixture-specific executions
+    return []
+
+
+@router.get("/fixtures/{fixture_id}/stats", response_model=Dict)
+def get_fixture_execution_statistics(
+    fixture_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get execution statistics for a fixture"""
+    # For now, return default stats since fixtures don't have executions
+    # In the future, you might want to implement fixture-specific stats
+    return {
+        "total_executions": 0,
+        "total_test_cases_used": 0,
+        "success_rate": 0,
+        "avg_duration": 0,
+        "last_status": "not-run"
+    } 

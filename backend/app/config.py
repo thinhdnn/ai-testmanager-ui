@@ -22,4 +22,4 @@ class Settings(BaseSettings):
         env_prefix = "TESTMANAGER_"  # Environment variables should be prefixed with TESTMANAGER_
 
 
-settings = Settings() 
+settings = Settings()

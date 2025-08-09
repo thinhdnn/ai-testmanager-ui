@@ -4,9 +4,11 @@ from typing import List, Optional
 from uuid import UUID
 
 from ...database import get_db
-from ...schemas.test_case import TestCase, TestCaseCreate, TestCaseUpdate
+from ...schemas.test_case import TestCase, TestCaseCreate, TestCaseUpdate, TestCaseFixtureCreate, TestCaseFixtureUpdate
 from ...crud import test_case as crud_test_case
 from ...models.versioning import TestCaseVersion, StepVersion
+from ...auth import current_active_user
+from ...models.user import User
 
 router = APIRouter()
 
@@ -436,6 +438,125 @@ def copy_current_steps_to_version(
         "message": f"Copied {len(current_steps)} steps to version {version}",
         "steps_count": len(current_steps)
     }
+
+
+# Test Case Fixture endpoints
+@router.post("/{test_case_id}/fixtures", response_model=dict, status_code=status.HTTP_201_CREATED)
+def add_fixture_to_test_case(
+    test_case_id: str,
+    fixture_data: TestCaseFixtureCreate,
+    current_user: User = Depends(current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Add a fixture to a test case"""
+    try:
+        result = crud_test_case.add_fixture_to_test_case(
+            db, test_case_id, fixture_data, str(current_user.id)
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/{test_case_id}/fixtures/{fixture_id}")
+def remove_fixture_from_test_case(
+    test_case_id: str,
+    fixture_id: str,
+    db: Session = Depends(get_db)
+):
+    """Remove a fixture from a test case"""
+    success = crud_test_case.remove_fixture_from_test_case(db, test_case_id, fixture_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Fixture not found in test case")
+    return {"message": "Fixture removed from test case"}
+
+
+@router.get("/{test_case_id}/fixtures", response_model=List[dict])
+def get_test_case_fixtures(
+    test_case_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get all fixtures associated with a test case"""
+    # Check if test case exists
+    test_case = crud_test_case.get_test_case(db, test_case_id)
+    if not test_case:
+        raise HTTPException(status_code=404, detail="Test case not found")
+    
+    fixtures = crud_test_case.get_test_case_fixtures(db, test_case_id)
+    return fixtures
+
+
+@router.patch("/{test_case_id}/fixtures/{fixture_id}/order")
+def update_fixture_order(
+    test_case_id: str,
+    fixture_id: str,
+    new_order: int = Query(..., description="New order for the fixture"),
+    db: Session = Depends(get_db)
+):
+    """Update the order of a fixture in a test case"""
+    success = crud_test_case.update_test_case_fixture_order(db, test_case_id, fixture_id, new_order)
+    if not success:
+        raise HTTPException(status_code=404, detail="Fixture not found in test case")
+    return {"message": "Fixture order updated"}
+
+
+@router.patch("/{test_case_id}/fixtures/reorder")
+def reorder_test_case_fixtures(
+    test_case_id: str,
+    fixture_orders: List[dict],
+    db: Session = Depends(get_db)
+):
+    """Reorder all fixtures for a test case"""
+    # Check if test case exists
+    test_case = crud_test_case.get_test_case(db, test_case_id)
+    if not test_case:
+        raise HTTPException(status_code=404, detail="Test case not found")
+    
+    success = crud_test_case.reorder_test_case_fixtures(db, test_case_id, fixture_orders)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to reorder fixtures")
+    return {"message": "Fixtures reordered successfully"}
+
+
+@router.get("/{test_case_id}/fixtures/{fixture_id}/steps", response_model=List[dict])
+def get_test_case_fixture_steps(
+    test_case_id: str,
+    fixture_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get steps for a specific fixture in a test case"""
+    # Check if test case exists
+    test_case = crud_test_case.get_test_case(db, test_case_id)
+    if not test_case:
+        raise HTTPException(status_code=404, detail="Test case not found")
+    
+    # Check if fixture is associated with test case
+    fixtures = crud_test_case.get_test_case_fixtures(db, test_case_id)
+    fixture_exists = any(f["fixture_id"] == fixture_id for f in fixtures)
+    if not fixture_exists:
+        raise HTTPException(status_code=404, detail="Fixture not found in test case")
+    
+    # Get fixture steps
+    from ...models.step import Step
+    steps = db.query(Step).filter(
+        Step.fixture_id == fixture_id
+    ).order_by(Step.order).all()
+    
+    return [
+        {
+            "id": str(step.id),
+            "fixture_id": str(step.fixture_id),
+            "action": step.action,
+            "data": step.data,
+            "expected": step.expected,
+            "playwright_script": step.playwright_script,
+            "order": step.order,
+            "disabled": step.disabled,
+            "created_at": step.created_at,
+            "updated_at": step.updated_at
+        }
+        for step in steps
+    ]
 
 
  

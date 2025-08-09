@@ -32,6 +32,7 @@ class FixtureUpdate(BaseModel):
 
 class Fixture(FixtureBase):
     id: Union[str, UUID]
+    version: Optional[str] = None
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
     created_at: datetime

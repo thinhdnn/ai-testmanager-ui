@@ -1,167 +1,45 @@
-from sqlalchemy.orm import Session, joinedload
-from typing import Optional, List
+from sqlalchemy.orm import Session
+from sqlalchemy import and_
+from typing import List, Optional
 from uuid import UUID
-from fastapi import HTTPException
 
 from ..models.test_case import TestCase
-from ..models.user import User
-from ..schemas.test_case import TestCaseCreate, TestCaseUpdate
-
-
-def get_test_case(db: Session, test_case_id: str) -> Optional[TestCase]:
-    test_case = db.query(TestCase).filter(TestCase.id == test_case_id).first()
-    
-    if test_case and test_case.created_by:
-        try:
-            # Validate that created_by is a valid UUID
-            created_by_uuid = UUID(test_case.created_by)
-            author = db.query(User.username).filter(User.id == created_by_uuid).first()
-            test_case.author_name = author[0] if author else None
-        except ValueError:
-            # If created_by is not a valid UUID, set author_name to None
-            test_case.author_name = None
-    
-    return test_case
-
-
-def get_test_cases(db: Session, skip: int = 0, limit: int = 100) -> List[TestCase]:
-    # Query test cases first without join
-    test_cases = (
-        db.query(TestCase)
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
-    
-    # Then get author names in a separate query
-    for test_case in test_cases:
-        if test_case.created_by:
-            try:
-                # Validate that created_by is a valid UUID
-                created_by_uuid = UUID(test_case.created_by)
-                author = db.query(User.username).filter(User.id == created_by_uuid).first()
-                test_case.author_name = author[0] if author else None
-            except ValueError:
-                # If created_by is not a valid UUID, set author_name to None
-                test_case.author_name = None
-        else:
-            test_case.author_name = None
-    
-    return test_cases
-
-
-def get_test_cases_by_project(db: Session, project_id: str, skip: int = 0, limit: int = 100) -> List[TestCase]:
-    from uuid import UUID
-    import logging
-    from fastapi import HTTPException
-    logger = logging.getLogger(__name__)
-    
-    try:
-        # Convert string to UUID
-        logger.debug(f"Converting project_id string to UUID: {project_id}")
-        project_uuid = UUID(project_id)
-        logger.debug(f"Converted to UUID: {project_uuid}")
-        
-        logger.debug("Executing database query")
-        # Query test cases first
-        test_cases = (
-            db.query(TestCase)
-            .filter(TestCase.project_id == project_uuid)
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
-        logger.debug(f"Query returned {len(test_cases)} results")
-        
-        # Then get author names in a separate query
-        for test_case in test_cases:
-            if test_case.created_by:
-                try:
-                    # Validate that created_by is a valid UUID
-                    created_by_uuid = UUID(test_case.created_by)
-                    author = db.query(User.username).filter(User.id == created_by_uuid).first()
-                    test_case.author_name = author[0] if author else None
-                except ValueError:
-                    # If created_by is not a valid UUID, set author_name to None
-                    logger.warning(f"Invalid UUID in created_by field: {test_case.created_by}")
-                    test_case.author_name = None
-            else:
-                test_case.author_name = None
-        
-        logger.debug(f"Processed {len(test_cases)} test cases")
-        return test_cases
-    except ValueError as e:
-        logger.error(f"Invalid UUID format: {project_id}")
-        logger.error(f"Error: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Invalid project ID format: {project_id}")
-    except Exception as e:
-        logger.error(f"Error getting test cases for project {project_id}")
-        logger.error(f"Error: {str(e)}")
-        raise
-
-
-def get_test_cases_by_status(db: Session, status: str, skip: int = 0, limit: int = 100) -> List[TestCase]:
-    # Query test cases first without join
-    test_cases = (
-        db.query(TestCase)
-        .filter(TestCase.status == status)
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
-    
-    # Then get author names in a separate query
-    for test_case in test_cases:
-        if test_case.created_by:
-            try:
-                # Validate that created_by is a valid UUID
-                created_by_uuid = UUID(test_case.created_by)
-                author = db.query(User.username).filter(User.id == created_by_uuid).first()
-                test_case.author_name = author[0] if author else None
-            except ValueError:
-                # If created_by is not a valid UUID, set author_name to None
-                test_case.author_name = None
-        else:
-            test_case.author_name = None
-    
-    return test_cases
+from ..models.fixture import Fixture
+from ..models.step import Step
+from ..schemas.test_case import TestCaseCreate, TestCaseUpdate, TestCaseFixtureCreate, TestCaseFixtureUpdate
+from ..models.test_case import test_case_fixtures
 
 
 def create_test_case(db: Session, test_case: TestCaseCreate) -> TestCase:
-    from ..models.project import Project
-    
-    # Check if project exists
-    project = db.query(Project).filter(Project.id == test_case.project_id).first()
-    if not project:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Project not found")
-    
-    db_test_case = TestCase(
-        name=test_case.name,
-        project_id=test_case.project_id,
-        order=test_case.order,
-        status=test_case.status,
-        version=test_case.version,
-        is_manual=test_case.is_manual,
-        tags=test_case.tags,
-        test_file_path=test_case.test_file_path,
-        playwright_script=test_case.playwright_script,
-        created_by=test_case.created_by
-    )
+    db_test_case = TestCase(**test_case.dict())
     db.add(db_test_case)
     db.commit()
     db.refresh(db_test_case)
     return db_test_case
 
 
+def get_test_case(db: Session, test_case_id: str) -> Optional[TestCase]:
+    return db.query(TestCase).filter(TestCase.id == test_case_id).first()
+
+
+def get_test_cases(db: Session, skip: int = 0, limit: int = 100) -> List[TestCase]:
+    return db.query(TestCase).offset(skip).limit(limit).all()
+
+
+def get_test_cases_by_project(db: Session, project_id: str, skip: int = 0, limit: int = 100) -> List[TestCase]:
+    return db.query(TestCase).filter(TestCase.project_id == project_id).offset(skip).limit(limit).all()
+
+
+def get_test_cases_by_status(db: Session, status: str, skip: int = 0, limit: int = 100) -> List[TestCase]:
+    return db.query(TestCase).filter(TestCase.status == status).offset(skip).limit(limit).all()
+
+
 def update_test_case(db: Session, test_case_id: str, test_case: TestCaseUpdate) -> Optional[TestCase]:
     db_test_case = get_test_case(db, test_case_id)
     if db_test_case:
         update_data = test_case.dict(exclude_unset=True)
-        
         for field, value in update_data.items():
             setattr(db_test_case, field, value)
-        
         db.commit()
         db.refresh(db_test_case)
     return db_test_case
@@ -176,16 +54,123 @@ def delete_test_case(db: Session, test_case_id: str) -> bool:
     return False
 
 
-def update_test_case_status(db: Session, test_case_id: str, status: str, last_run_by: Optional[str] = None) -> Optional[TestCase]:
-    """Update test case status and last run info"""
-    db_test_case = get_test_case(db, test_case_id)
-    if db_test_case:
-        db_test_case.status = status
-        if last_run_by:
-            db_test_case.last_run_by = last_run_by
-            from datetime import datetime
-            db_test_case.last_run = datetime.utcnow()
-        
-        db.commit()
-        db.refresh(db_test_case)
-    return db_test_case 
+# Test Case Fixture CRUD operations
+def add_fixture_to_test_case(db: Session, test_case_id: str, fixture_data: TestCaseFixtureCreate, created_by: str = None) -> dict:
+    """Add a fixture to a test case"""
+    # Check if test case exists
+    test_case = get_test_case(db, test_case_id)
+    if not test_case:
+        raise ValueError("Test case not found")
+    
+    # Check if fixture exists
+    fixture = db.query(Fixture).filter(Fixture.id == fixture_data.fixture_id).first()
+    if not fixture:
+        raise ValueError("Fixture not found")
+    
+    # Check if fixture is already associated with test case
+    existing = db.query(test_case_fixtures).filter(
+        and_(
+            test_case_fixtures.c.test_case_id == test_case_id,
+            test_case_fixtures.c.fixture_id == fixture_data.fixture_id
+        )
+    ).first()
+    
+    if existing:
+        raise ValueError("Fixture is already associated with this test case")
+    
+    # Get max order for this test case
+    max_order = db.query(test_case_fixtures.c.order).filter(
+        test_case_fixtures.c.test_case_id == test_case_id
+    ).order_by(test_case_fixtures.c.order.desc()).first()
+    
+    order = (max_order[0] if max_order else 0) + 1
+    
+    # Insert the association
+    db.execute(
+        test_case_fixtures.insert().values(
+            test_case_id=test_case_id,
+            fixture_id=fixture_data.fixture_id,
+            order=order,
+            created_by=created_by
+        )
+    )
+    db.commit()
+    
+    return {
+        "test_case_id": test_case_id,
+        "fixture_id": str(fixture_data.fixture_id),
+        "order": order
+    }
+
+
+def remove_fixture_from_test_case(db: Session, test_case_id: str, fixture_id: str) -> bool:
+    """Remove a fixture from a test case"""
+    result = db.execute(
+        test_case_fixtures.delete().where(
+            and_(
+                test_case_fixtures.c.test_case_id == test_case_id,
+                test_case_fixtures.c.fixture_id == fixture_id
+            )
+        )
+    )
+    db.commit()
+    return result.rowcount > 0
+
+
+def get_test_case_fixtures(db: Session, test_case_id: str) -> List[dict]:
+    """Get all fixtures associated with a test case"""
+    fixtures = db.query(
+        test_case_fixtures.c.fixture_id,
+        test_case_fixtures.c.order,
+        test_case_fixtures.c.created_at,
+        test_case_fixtures.c.created_by,
+        Fixture.name,
+        Fixture.type,
+        Fixture.playwright_script
+    ).join(
+        Fixture, test_case_fixtures.c.fixture_id == Fixture.id
+    ).filter(
+        test_case_fixtures.c.test_case_id == test_case_id
+    ).order_by(test_case_fixtures.c.order).all()
+    
+    return [
+        {
+            "fixture_id": str(fixture.fixture_id),
+            "order": fixture.order,
+            "created_at": fixture.created_at,
+            "created_by": fixture.created_by,
+            "name": fixture.name,
+            "type": fixture.type,
+            "playwright_script": fixture.playwright_script
+        }
+        for fixture in fixtures
+    ]
+
+
+def update_test_case_fixture_order(db: Session, test_case_id: str, fixture_id: str, new_order: int) -> bool:
+    """Update the order of a fixture in a test case"""
+    result = db.execute(
+        test_case_fixtures.update().where(
+            and_(
+                test_case_fixtures.c.test_case_id == test_case_id,
+                test_case_fixtures.c.fixture_id == fixture_id
+            )
+        ).values(order=new_order)
+    )
+    db.commit()
+    return result.rowcount > 0
+
+
+def reorder_test_case_fixtures(db: Session, test_case_id: str, fixture_orders: List[dict]) -> bool:
+    """Reorder all fixtures for a test case"""
+    for fixture_order in fixture_orders:
+        db.execute(
+            test_case_fixtures.update().where(
+                and_(
+                    test_case_fixtures.c.test_case_id == test_case_id,
+                    test_case_fixtures.c.fixture_id == fixture_order["fixture_id"]
+                )
+            ).values(order=fixture_order["order"])
+        )
+    db.commit()
+    return True 

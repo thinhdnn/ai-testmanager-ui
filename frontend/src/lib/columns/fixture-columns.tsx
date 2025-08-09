@@ -8,7 +8,7 @@ import { useParams, useRouter } from "next/navigation"
 export interface Fixture {
   id: string
   name: string
-  type: 'data' | 'config' | 'mock'
+  type: 'extend' | 'inline'
   status: 'active' | 'inactive' | 'draft'
   lastModified: string
   author: string
@@ -17,12 +17,10 @@ export interface Fixture {
 
 function getTypeColor(type: string) {
   switch (type) {
-    case "data":
+    case "extend":
       return "bg-blue-500/10 text-blue-500"
-    case "config":
+    case "inline":
       return "bg-purple-500/10 text-purple-500"
-    case "mock":
-      return "bg-orange-500/10 text-orange-500"
     default:
       return "bg-gray-500/10 text-gray-500"
   }
@@ -64,11 +62,6 @@ function FixtureNameCell({ name, fixture }: { name: string; fixture: Fixture }) 
 }
 
 export const columns: ColumnDef<Fixture>[] = [
-  {
-    accessorKey: "id",
-    header: "ID",
-    cell: ({ row }) => <div className="font-medium">{row.getValue("id")}</div>,
-  },
   {
     accessorKey: "name",
     header: ({ column }) => {
@@ -160,6 +153,23 @@ export const columns: ColumnDef<Fixture>[] = [
           Last Modified
         </Button>
       )
+    },
+    cell: ({ row }) => {
+      const date = row.getValue("lastModified") as string
+      if (!date) return <div className="text-gray-500">-</div>
+      
+      try {
+        const formattedDate = new Date(date).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+        return <div className="text-sm text-gray-600">{formattedDate}</div>
+      } catch {
+        return <div className="text-gray-500">{date}</div>
+      }
     },
   },
   {

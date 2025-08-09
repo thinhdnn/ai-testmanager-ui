@@ -19,5 +19,7 @@ class Fixture(BaseModel):
     
     # Relationships
     project = relationship("Project", back_populates="fixtures")
-    steps = relationship("Step", back_populates="fixture", cascade="all, delete-orphan")
-    versions = relationship("FixtureVersion", back_populates="fixture", cascade="all, delete-orphan") 
+    steps = relationship("Step", foreign_keys="[Step.fixture_id]", back_populates="fixture", cascade="all, delete-orphan")
+    versions = relationship("FixtureVersion", back_populates="fixture", cascade="all, delete-orphan")
+    # New relationship for test cases
+    test_cases = relationship("TestCase", secondary="test_case_fixtures", back_populates="fixtures") 

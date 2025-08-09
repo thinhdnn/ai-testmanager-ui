@@ -7,6 +7,8 @@ from ...database import get_db
 from ...schemas.fixture import Fixture, FixtureCreate, FixtureUpdate
 from ...crud import fixture as crud_fixture
 from ...models.versioning import FixtureVersion
+from ...auth import current_active_user
+from ...models.user import User
 
 router = APIRouter()
 
@@ -35,9 +37,13 @@ def _create_version(db: Session, fixture, version: str = None):
 @router.post("/", response_model=Fixture, status_code=status.HTTP_201_CREATED)
 def create_fixture(
     fixture: FixtureCreate,
+    current_user: User = Depends(current_active_user),
     db: Session = Depends(get_db)
 ):
     """Create new fixture with auto-versioning"""
+    # Set created_by from current user
+    fixture.created_by = str(current_user.id)
+    
     # Create fixture
     db_fixture = crud_fixture.create_fixture(db=db, fixture=fixture)
     
@@ -204,6 +210,84 @@ def restore_fixture_version(
     fixture.name = db_version.name
     fixture.playwright_script = db_version.playwright_script
     
+    db.commit()
+    db.refresh(fixture)
+    
+    return fixture
+
+
+@router.post("/{fixture_id}/versions/create", response_model=dict)
+def create_fixture_version(
+    fixture_id: str,
+    reason: str = Query(..., description="Reason for version creation"),
+    db: Session = Depends(get_db)
+):
+    """Create a new version of a fixture"""
+    fixture = crud_fixture.get_fixture(db, fixture_id=fixture_id)
+    if not fixture:
+        raise HTTPException(status_code=404, detail="Fixture not found")
+    
+    # Create new version
+    version = _create_version(db, fixture)
+    
+    return {
+        "id": str(version.id),
+        "version": version.version,
+        "name": version.name,
+        "created_at": version.created_at,
+        "reason": reason
+    }
+
+
+@router.get("/{fixture_id}/versions/{version}/steps", response_model=List[dict])
+def get_fixture_version_steps(
+    fixture_id: str,
+    version: str,
+    db: Session = Depends(get_db)
+):
+    """Get steps for a specific version of a fixture"""
+    # Check if fixture exists
+    fixture = crud_fixture.get_fixture(db, fixture_id=fixture_id)
+    if not fixture:
+        raise HTTPException(status_code=404, detail="Fixture not found")
+    
+    # For now, return current steps since fixture versions don't store steps separately
+    # In the future, you might want to store steps with versions
+    from ...models.step import Step
+    steps = db.query(Step).filter(
+        Step.fixture_id == fixture_id
+    ).order_by(Step.order).all()
+    
+    return [
+        {
+            "id": str(step.id),
+            "fixture_id": str(step.fixture_id),
+            "action": step.action,
+            "data": step.data,
+            "expected": step.expected,
+            "playwright_script": step.playwright_script,
+            "order": step.order,
+            "disabled": step.disabled,
+            "created_at": step.created_at,
+            "updated_at": step.updated_at
+        }
+        for step in steps
+    ]
+
+
+@router.patch("/{fixture_id}/status")
+def update_fixture_status(
+    fixture_id: str,
+    status: str = Query(..., description="New status"),
+    db: Session = Depends(get_db)
+):
+    """Update fixture status"""
+    fixture = crud_fixture.get_fixture(db, fixture_id=fixture_id)
+    if not fixture:
+        raise HTTPException(status_code=404, detail="Fixture not found")
+    
+    # Update status
+    fixture.status = status
     db.commit()
     db.refresh(fixture)
     
