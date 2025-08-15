@@ -1,0 +1,24 @@
+import { test, expect } from '../fixtures';
+
+{{!-- Test Definition with Tags --}}
+test('{{testCaseName}}'{{#if tags}}, {
+  tag: [{{#each tags}}'@{{this}}'{{#unless @last}}, {{/unless}}{{/each}}]
+}{{/if}}, async ({ page{{#each fixtures}}{{#if (eq mode "extend")}}, {{exportName}}{{/if}}{{/each}} }) => {
+  // Always go to baseURL at the beginning
+  await page.goto('/');
+
+  {{!-- Test Steps --}}
+  {{#each steps}}
+  // Step {{add @index 1}}: {{action}}
+  {{#if data}}// Data: {{data}}{{/if}}
+  {{#if expected}}// Expected: {{expected}}{{/if}}
+  {{#if disabled}}/* DISABLED STEP
+  {{{playwrightCode}}}
+  */{{else}}{{#if playwrightCode}}
+  {{{playwrightCode}}}{{else}}
+  // TODO: Implement this step{{/if}}{{/if}}
+  {{#unless @last}}
+
+  {{/unless}}
+  {{/each}}
+});

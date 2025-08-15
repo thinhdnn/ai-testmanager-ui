@@ -1,0 +1,39 @@
+{
+	"folders": {},
+	"connections": {
+		"postgres-jdbc-1989a2e2029-5cde96f469fb56b7": {
+			"provider": "postgresql",
+			"driver": "postgres-jdbc",
+			"name": "PostgreSQL@localhost",
+			"configuration": {
+				"host": "testmanager_postgres",
+				"port": "5432",
+				"database": "testmanager_db",
+				"url": "jdbc:postgresql://testmanager_postgres:5432/testmanager_db",
+				"configurationType": "MANUAL",
+				"type": "dev",
+				"closeIdleConnection": true,
+				"auth-model": "native",
+				"bootstrap": {
+					"autocommit": true
+				}
+			}
+		}
+	},
+	"connection-types": {
+		"dev": {
+			"name": "Development",
+			"color": "255,255,255",
+			"description": "Regular development database",
+			"auto-commit": true,
+			"confirm-execute": false,
+			"confirm-data-change": false,
+			"smart-commit": false,
+			"smart-commit-recover": true,
+			"auto-close-transactions": true,
+			"close-transactions-period": 1800,
+			"auto-close-connections": true,
+			"close-connections-period": 14400
+		}
+	}
+}

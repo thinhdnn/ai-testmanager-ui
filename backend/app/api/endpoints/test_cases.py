@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from uuid import UUID
+import logging
 
 from ...database import get_db
 from ...schemas.test_case import TestCase, TestCaseCreate, TestCaseUpdate, TestCaseFixtureCreate, TestCaseFixtureUpdate
@@ -9,6 +10,9 @@ from ...crud import test_case as crud_test_case
 from ...models.versioning import TestCaseVersion, StepVersion
 from ...auth import current_active_user
 from ...models.user import User
+from ...services.playwright_test_case import generate_test_script, save_test_script, list_test_scripts
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -64,16 +68,25 @@ def _create_version(db: Session, test_case, version: str = None):
 
 
 @router.post("/", response_model=TestCase, status_code=status.HTTP_201_CREATED)
-def create_test_case(
+async def create_test_case(
     test_case: TestCaseCreate,
     db: Session = Depends(get_db)
 ):
-    """Create new test case with auto-versioning"""
+    """Create new test case with auto-versioning and auto-script generation"""
     # Create test case
     db_test_case = crud_test_case.create_test_case(db=db, test_case=test_case)
     
     # Auto-create first version
     _create_version(db, db_test_case, "1.0.0")
+    
+    # Auto-generate test script if project exists
+    if db_test_case.project_id:
+        try:
+            await crud_test_case.regenerate_test_case_script(db, str(db_test_case.id))
+            logger.info(f"Auto-generated test script for new test case: {db_test_case.id}")
+        except Exception as e:
+            # Log error but don't fail the test case creation
+            logger.warning(f"Failed to auto-generate test script for test case {db_test_case.id}: {str(e)}")
     
     return db_test_case
 
@@ -114,13 +127,13 @@ def read_test_case(
 
 
 @router.put("/{test_case_id}", response_model=TestCase)
-def update_test_case(
+async def update_test_case(
     test_case_id: str,
     test_case: TestCaseUpdate,
     auto_version: bool = Query(True, description="Auto-create version on update"),
     db: Session = Depends(get_db)
 ):
-    """Update test case with optional auto-versioning"""
+    """Update test case with optional auto-versioning and auto-script regeneration"""
     db_test_case = crud_test_case.get_test_case(db, test_case_id=test_case_id)
     if db_test_case is None:
         raise HTTPException(status_code=404, detail="Test case not found")
@@ -138,6 +151,15 @@ def update_test_case(
         updated_test_case.version = new_version.version
         db.commit()
         db.refresh(updated_test_case)
+    
+    # Auto-regenerate test script if project exists
+    if updated_test_case.project_id:
+        try:
+            await crud_test_case.regenerate_test_case_script(db, test_case_id)
+            logger.info(f"Auto-regenerated test script for updated test case: {test_case_id}")
+        except Exception as e:
+            # Log error but don't fail the test case update
+            logger.warning(f"Failed to auto-regenerate test script for test case {test_case_id}: {str(e)}")
     
     return updated_test_case
 
@@ -557,6 +579,198 @@ def get_test_case_fixture_steps(
         }
         for step in steps
     ]
+
+
+# ============ PLAYWRIGHT TEST SCRIPT GENERATION ENDPOINTS ============
+
+@router.post("/{test_case_id}/generate-script", response_model=dict)
+def generate_test_case_script(
+    test_case_id: str,
+    project_name: Optional[str] = Query(None, description="Target Playwright project name"),
+    db: Session = Depends(get_db)
+):
+    """Generate Playwright test script from test case"""
+    # Check if test case exists
+    test_case = crud_test_case.get_test_case(db, test_case_id)
+    if not test_case:
+        raise HTTPException(status_code=404, detail="Test case not found")
+    
+    # Generate test script
+    result = generate_test_script(db, test_case_id, project_name)
+    
+    if not result.get('success'):
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to generate test script: {result.get('error', 'Unknown error')}"
+        )
+    
+    return {
+        "success": True,
+        "message": "Test script generated successfully",
+        "filename": result['filename'],
+        "test_case_name": result['test_case_name'],
+        "content": result['content'],
+        "template_context": result['template_context']
+    }
+
+
+@router.post("/{test_case_id}/generate-and-save", response_model=dict)
+def generate_and_save_test_case_script(
+    test_case_id: str,
+    project_name: str = Query(..., description="Target Playwright project name"),
+    db: Session = Depends(get_db)
+):
+    """Generate and save Playwright test script to project"""
+    # Check if test case exists
+    test_case = crud_test_case.get_test_case(db, test_case_id)
+    if not test_case:
+        raise HTTPException(status_code=404, detail="Test case not found")
+    
+    # Generate test script
+    result = generate_test_script(db, test_case_id, project_name)
+    
+    if not result.get('success'):
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to generate test script: {result.get('error', 'Unknown error')}"
+        )
+    
+    # Save to project
+    save_result = save_test_script(project_name, result)
+    
+    if not save_result.get('success'):
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to save test script: {save_result.get('error', 'Unknown error')}"
+        )
+    
+    return {
+        "success": True,
+        "message": "Test script generated and saved successfully",
+        "filename": result['filename'],
+        "file_path": save_result['file_path'],
+        "project_name": project_name,
+        "test_case_name": result['test_case_name']
+    }
+
+
+@router.get("/scripts/{project_name}", response_model=List[dict])
+def list_project_test_scripts(
+    project_name: str,
+    db: Session = Depends(get_db)
+):
+    """List all test scripts in a Playwright project"""
+    scripts = list_test_scripts(project_name)
+    return scripts
+
+
+@router.get("/{test_case_id}/preview-script", response_model=dict)
+def preview_test_case_script(
+    test_case_id: str,
+    project_name: Optional[str] = Query(None, description="Target Playwright project name"),
+    db: Session = Depends(get_db)
+):
+    """Preview generated Playwright test script without saving"""
+    # Check if test case exists
+    test_case = crud_test_case.get_test_case(db, test_case_id)
+    if not test_case:
+        raise HTTPException(status_code=404, detail="Test case not found")
+    
+    # Generate test script
+    result = generate_test_script(db, test_case_id, project_name)
+    
+    if not result.get('success'):
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to generate test script: {result.get('error', 'Unknown error')}"
+        )
+    
+    return {
+        "success": True,
+        "preview": True,
+        "filename": result['filename'],
+        "test_case_name": result['test_case_name'],
+        "content": result['content'],
+        "template_context": result['template_context'],
+        "project_name": project_name or "default"
+    }
+
+
+@router.post("/bulk-generate-scripts", response_model=dict)
+def bulk_generate_test_scripts(
+    test_case_ids: List[str],
+    project_name: str = Query(..., description="Target Playwright project name"),
+    save_to_project: bool = Query(True, description="Whether to save scripts to project"),
+    db: Session = Depends(get_db)
+):
+    """Generate Playwright test scripts for multiple test cases"""
+    results = []
+    errors = []
+    
+    for test_case_id in test_case_ids:
+        try:
+            # Check if test case exists
+            test_case = crud_test_case.get_test_case(db, test_case_id)
+            if not test_case:
+                errors.append({
+                    "test_case_id": test_case_id,
+                    "error": "Test case not found"
+                })
+                continue
+            
+            # Generate test script
+            result = generate_test_script(db, test_case_id, project_name)
+            
+            if not result.get('success'):
+                errors.append({
+                    "test_case_id": test_case_id,
+                    "error": result.get('error', 'Unknown error')
+                })
+                continue
+            
+            # Save to project if requested
+            if save_to_project:
+                save_result = save_test_script(project_name, result)
+                if not save_result.get('success'):
+                    errors.append({
+                        "test_case_id": test_case_id,
+                        "error": f"Failed to save: {save_result.get('error', 'Unknown error')}"
+                    })
+                    continue
+                
+                results.append({
+                    "test_case_id": test_case_id,
+                    "filename": result['filename'],
+                    "file_path": save_result['file_path'],
+                    "test_case_name": result['test_case_name']
+                })
+            else:
+                results.append({
+                    "test_case_id": test_case_id,
+                    "filename": result['filename'],
+                    "test_case_name": result['test_case_name'],
+                    "content": result['content']
+                })
+                
+        except Exception as e:
+            errors.append({
+                "test_case_id": test_case_id,
+                "error": str(e)
+            })
+    
+    return {
+        "success": True,
+        "message": f"Processed {len(test_case_ids)} test cases",
+        "results": results,
+        "errors": errors,
+        "summary": {
+            "total": len(test_case_ids),
+            "successful": len(results),
+            "failed": len(errors),
+            "project_name": project_name,
+            "saved_to_project": save_to_project
+        }
+    }
 
 
  

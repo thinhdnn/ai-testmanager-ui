@@ -6,10 +6,11 @@ Creates sample projects, test cases, and users for testing
 
 import sys
 import os
+import asyncio
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from app.database import SessionLocal
-from app.crud import user as crud_user, project as crud_project, test_case as crud_test_case, step as crud_step, project_setting as crud_setting, test_result as crud_result, release as crud_release
+from app.crud import user as crud_user, project as crud_project, test_case as crud_test_case, step as crud_step, project_setting as crud_setting, test_result as crud_result, release as crud_release, fixture as crud_fixture
 from app.schemas.user import UserCreate
 from app.schemas.project import ProjectCreate
 from app.schemas.test_case import TestCaseCreate
@@ -17,11 +18,12 @@ from app.schemas.step import StepCreate
 from app.schemas.project_setting import ProjectSettingCreate
 from app.schemas.test_result import TestResultHistoryCreate, TestCaseExecutionCreate
 from app.schemas.release import ReleaseCreate, ReleaseTestCaseCreate
+from app.schemas.fixture import FixtureCreate
 from datetime import datetime
 from app.models.tag import Tag
 
 
-def create_sample_data():
+async def create_sample_data():
     db = SessionLocal()
     
     try:
@@ -76,8 +78,8 @@ def create_sample_data():
             created_by=str(db_admin.id)
         )
         
-        db_ecommerce = crud_project.create_project(db, ecommerce_project, created_by=str(db_admin.id))
-        db_mobile = crud_project.create_project(db, mobile_project, created_by=str(db_admin.id))
+        db_ecommerce = await crud_project.create_project(db, ecommerce_project, created_by=str(db_admin.id))
+        db_mobile = await crud_project.create_project(db, mobile_project, created_by=str(db_admin.id))
         
         print(f"Created projects: {db_ecommerce.name}, {db_mobile.name}")
         
@@ -94,6 +96,53 @@ def create_sample_data():
             db.add(tag)
         db.commit()
         print(f"Created {len(global_tags)} global tags.")
+        
+        # Create sample fixtures
+        print("Creating sample fixtures...")
+        
+        fixtures = [
+            FixtureCreate(
+                name="Login as Admin",
+                project_id=str(db_ecommerce.id),
+                type="extend",
+                playwright_script="// Admin login setup\nawait page.goto('/login');\nawait page.fill('#username', 'admin@shop.com');\nawait page.fill('#password', 'admin123');",
+                created_by=str(db_admin.id)
+            ),
+            FixtureCreate(
+                name="Login as Regular User",
+                project_id=str(db_ecommerce.id),
+                type="extend",
+                playwright_script="// Regular user login setup\nawait page.goto('/login');\nawait page.fill('#username', 'user@shop.com');\nawait page.fill('#password', 'user123');",
+                created_by=str(db_admin.id)
+            ),
+            FixtureCreate(
+                name="Setup Test Product",
+                project_id=str(db_ecommerce.id),
+                type="inline",
+                playwright_script="// Create test product via API\nconst response = await page.request.post('/api/products', {\n  data: {\n    name: 'Test Product',\n    price: 29.99,\n    stock: 100\n  }\n});",
+                created_by=str(db_tester.id)
+            ),
+            FixtureCreate(
+                name="Clear Shopping Cart",
+                project_id=str(db_ecommerce.id),
+                type="inline",
+                playwright_script="// Clear cart before test\nawait page.goto('/cart');\nconst clearButton = page.locator('.clear-cart');\nif (await clearButton.isVisible()) {\n  await clearButton.click();\n}",
+                created_by=str(db_tester.id)
+            ),
+            FixtureCreate(
+                name="Mobile App Setup",
+                project_id=str(db_mobile.id),
+                type="extend",
+                playwright_script="// Mobile app initialization\n// Reset app state\n// Clear app data",
+                created_by=str(db_tester.id)
+            )
+        ]
+        
+        created_fixtures = []
+        for fixture in fixtures:
+            db_fixture = await crud_fixture.create_fixture(db, fixture)
+            created_fixtures.append(db_fixture)
+            print(f"Created fixture: {db_fixture.name} ({db_fixture.type})")
         
         # Create sample test cases
         print("Creating sample test cases...")
@@ -162,6 +211,7 @@ def create_sample_data():
                 action="navigate",
                 data="https://shop.example.com/login",
                 expected="Login page is displayed",
+                playwright_script="await page.goto('https://shop.example.com/login');",
                 order=1,
                 created_by=str(db_tester.id)
             ),
@@ -170,6 +220,7 @@ def create_sample_data():
                 action="type",
                 data='{"selector": "#username", "value": "testuser@example.com"}',
                 expected="Username is entered",
+                playwright_script="await page.fill('#username', 'testuser@example.com');",
                 order=2,
                 created_by=str(db_tester.id)
             ),
@@ -178,6 +229,7 @@ def create_sample_data():
                 action="type",
                 data='{"selector": "#password", "value": "password123"}',
                 expected="Password is entered",
+                playwright_script="await page.fill('#password', 'password123');",
                 order=3,
                 created_by=str(db_tester.id)
             ),
@@ -186,6 +238,7 @@ def create_sample_data():
                 action="click",
                 data='{"selector": "#login-button"}',
                 expected="User is redirected to dashboard",
+                playwright_script="await page.click('#login-button');\nawait page.waitForURL('**/dashboard');",
                 order=4,
                 created_by=str(db_tester.id)
             )
@@ -198,6 +251,7 @@ def create_sample_data():
                 action="navigate",
                 data="https://shop.example.com/products/123",
                 expected="Product page is displayed",
+                playwright_script="await page.goto('https://shop.example.com/products/123');",
                 order=1,
                 created_by=str(db_tester.id)
             ),
@@ -206,6 +260,7 @@ def create_sample_data():
                 action="click",
                 data='{"selector": ".add-to-cart-btn"}',
                 expected="Product is added to cart",
+                playwright_script="await page.click('.add-to-cart-btn');\nawait page.waitForSelector('.cart-notification');",
                 order=2,
                 created_by=str(db_tester.id)
             ),
@@ -214,18 +269,138 @@ def create_sample_data():
                 action="verify",
                 data='{"selector": ".cart-count", "text": "1"}',
                 expected="Cart count shows 1 item",
+                playwright_script="await expect(page.locator('.cart-count')).toHaveText('1');",
                 order=3,
                 created_by=str(db_tester.id)
             )
         ]
         
-        # Create all steps
+        # Create all steps for test cases
         all_steps = login_steps + cart_steps
         step_count = 0
         for step in all_steps:
             db_step = crud_step.create_step(db, step)
             step_count += 1
             print(f"Created step: {db_step.action} (order: {db_step.order})")
+        
+        # Create sample steps for fixtures
+        print("Creating sample fixture steps...")
+        
+        # Steps for "Login as Admin" fixture
+        admin_login_steps = [
+            StepCreate(
+                fixture_id=str(created_fixtures[0].id),  # Login as Admin
+                action="Navigate to login page",
+                data="",
+                expected="Login page should be displayed",
+                playwright_script="await page.goto('/login');",
+                order=1,
+                created_by=str(db_admin.id)
+            ),
+            StepCreate(
+                fixture_id=str(created_fixtures[0].id),
+                action="Fill admin credentials",
+                data="admin@shop.com",
+                expected="Admin credentials should be entered",
+                playwright_script="await page.fill('#username', 'admin@shop.com');\nawait page.fill('#password', 'admin123');",
+                order=2,
+                created_by=str(db_admin.id)
+            ),
+            StepCreate(
+                fixture_id=str(created_fixtures[0].id),
+                action="Click login button",
+                data="",
+                expected="Should redirect to admin dashboard",
+                playwright_script="await page.click('#login-button');\nawait page.waitForURL('**/admin/dashboard');",
+                order=3,
+                created_by=str(db_admin.id)
+            )
+        ]
+        
+        # Steps for "Login as Regular User" fixture
+        regular_user_login_steps = [
+            StepCreate(
+                fixture_id=str(created_fixtures[1].id),  # Login as Regular User
+                action="Navigate to login page",
+                data="",
+                expected="Login page should be displayed",
+                playwright_script="await page.goto('/login');",
+                order=1,
+                created_by=str(db_admin.id)
+            ),
+            StepCreate(
+                fixture_id=str(created_fixtures[1].id),
+                action="Fill user credentials",
+                data="user@shop.com",
+                expected="User credentials should be entered",
+                playwright_script="await page.fill('#username', 'user@shop.com');\nawait page.fill('#password', 'user123');",
+                order=2,
+                created_by=str(db_admin.id)
+            ),
+            StepCreate(
+                fixture_id=str(created_fixtures[1].id),
+                action="Click login button",
+                data="",
+                expected="Should redirect to user dashboard",
+                playwright_script="await page.click('#login-button');\nawait page.waitForURL('**/dashboard');",
+                order=3,
+                created_by=str(db_admin.id)
+            )
+        ]
+        
+        # Steps for "Setup Test Product" fixture
+        product_setup_steps = [
+            StepCreate(
+                fixture_id=str(created_fixtures[2].id),  # Setup Test Product
+                action="Create test product via API",
+                data='{"name": "Test Product", "price": 29.99, "stock": 100}',
+                expected="Test product should be created",
+                playwright_script="const response = await page.request.post('/api/products', {\n  data: {\n    name: 'Test Product',\n    price: 29.99,\n    stock: 100\n  }\n});",
+                order=1,
+                created_by=str(db_tester.id)
+            ),
+            StepCreate(
+                fixture_id=str(created_fixtures[2].id),
+                action="Verify product creation",
+                data="",
+                expected="Product should exist in database",
+                playwright_script="expect(response.status()).toBe(201);\nconst product = await response.json();\nexpect(product.name).toBe('Test Product');",
+                order=2,
+                created_by=str(db_tester.id)
+            )
+        ]
+        
+        # Steps for "Clear Shopping Cart" fixture  
+        clear_cart_steps = [
+            StepCreate(
+                fixture_id=str(created_fixtures[3].id),  # Clear Shopping Cart
+                action="Navigate to cart page",
+                data="",
+                expected="Cart page should be displayed",
+                playwright_script="await page.goto('/cart');",
+                order=1,
+                created_by=str(db_tester.id)
+            ),
+            StepCreate(
+                fixture_id=str(created_fixtures[3].id),
+                action="Clear cart if not empty",
+                data="",
+                expected="Cart should be empty",
+                playwright_script="const clearButton = page.locator('.clear-cart');\nif (await clearButton.isVisible()) {\n  await clearButton.click();\n  await expect(page.locator('.cart-empty')).toBeVisible();\n}",
+                order=2,
+                created_by=str(db_tester.id)
+            )
+        ]
+        
+        # Create all fixture steps
+        all_fixture_steps = admin_login_steps + regular_user_login_steps + product_setup_steps + clear_cart_steps
+        fixture_step_count = 0
+        for step in all_fixture_steps:
+            db_step = crud_step.create_step(db, step)
+            fixture_step_count += 1
+            print(f"Created fixture step: {db_step.action} (order: {db_step.order})")
+        
+        step_count += fixture_step_count
         
         # Create versions for test cases with steps
         print("Creating versions for test cases...")
@@ -512,7 +687,7 @@ def create_sample_data():
             print(f"Created execution: {db_execution.status} for test case")
         
         print(f"\n✅ Sample data created successfully!")
-        print(f"📊 Created: {len(test_cases)} test cases, {step_count} steps, {setting_count} settings, {len(created_releases)} releases, {release_mapping_count} release mappings, 2 test results, {execution_count} executions across 2 projects")
+        print(f"📊 Created: {len(created_fixtures)} fixtures, {len(test_cases)} test cases, {step_count} steps, {setting_count} settings, {len(created_releases)} releases, {release_mapping_count} release mappings, 2 test results, {execution_count} executions across 2 projects")
         print("🔗 You can now access the API at http://localhost:8000/docs")
         
     except Exception as e:
@@ -523,4 +698,4 @@ def create_sample_data():
 
 
 if __name__ == "__main__":
-    create_sample_data() 
+    asyncio.run(create_sample_data()) 

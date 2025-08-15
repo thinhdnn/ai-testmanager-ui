@@ -9,18 +9,22 @@ from ...schemas.release import Release, ReleaseCreate, ReleaseUpdate, ReleaseSum
 from ...crud import project as crud_project, project_setting as crud_setting, release as crud_release
 from ...auth import current_active_user
 from ...models.user import User
+from ...services.playwright_project import (
+    playwright_manager, 
+    create_project as create_playwright_project
+)
 
 router = APIRouter()
 
 
 @router.post("/", response_model=Project, status_code=status.HTTP_201_CREATED)
-def create_project(
+async def create_project(
     project: ProjectCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(current_active_user)
 ):
-    """Create new project"""
-    return crud_project.create_project(db=db, project=project, created_by=str(current_user.id))
+    """Create new project with local Playwright project"""
+    return await crud_project.create_project(db=db, project=project, created_by=str(current_user.id))
 
 
 @router.get("/", response_model=List[Project])
@@ -485,4 +489,79 @@ def get_release_statistics(
         raise HTTPException(status_code=404, detail="Release not found for this project")
     
     stats = crud_release.get_release_stats(db, release_id=release_id)
-    return stats 
+    return stats
+
+
+# ============ PLAYWRIGHT PROJECT MANAGEMENT ============
+
+@router.get("/{project_id}/playwright-status")
+def get_playwright_project_status(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(current_active_user)
+):
+    """Check if Playwright project exists for this database project"""
+    # Check if project exists
+    db_project = crud_project.get_project(db, project_id=project_id)
+    if db_project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Check if Playwright project exists
+    playwright_path = playwright_manager.get_project_path(db_project.name)
+    
+    return {
+        "project_name": db_project.name,
+        "cleaned_folder_name": playwright_manager.clean_folder_name(db_project.name),
+        "playwright_exists": playwright_path is not None,
+        "playwright_path": str(playwright_path) if playwright_path else None
+    }
+
+
+@router.post("/{project_id}/playwright-recreate")
+async def recreate_playwright_project(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(current_active_user)
+):
+    """Recreate Playwright project for existing database project"""
+    # Check if project exists
+    db_project = crud_project.get_project(db, project_id=project_id)
+    if db_project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    try:
+        # Create Playwright project with force recreation
+        success, cleaned_name, error = await create_playwright_project(
+            db_project.name,
+            force_recreate=True
+        )
+        
+        if success:
+            return {
+                "message": f"Successfully recreated Playwright project '{cleaned_name}'",
+                "cleaned_folder_name": cleaned_name,
+                "success": True
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to recreate Playwright project: {error}"
+            )
+            
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Exception while recreating Playwright project: {str(e)}"
+        )
+
+
+@router.get("/playwright-projects")
+def list_all_playwright_projects(
+    current_user: User = Depends(current_active_user)
+):
+    """List all existing Playwright projects"""
+    projects = playwright_manager.list_projects()
+    return {
+        "projects": projects,
+        "count": len(projects)
+    }

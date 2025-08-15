@@ -7,7 +7,7 @@ from uuid import UUID
 class FixtureBase(BaseModel):
     name: str
     project_id: Union[str, UUID]
-    type: Optional[str] = "data"  # data, config, mock
+    type: Optional[str] = "extend"  # extend, inline
     status: Optional[str] = "draft"  # active, inactive, draft
     environment: Optional[str] = "all"  # all, development, staging, production
     playwright_script: Optional[str] = None
@@ -33,6 +33,9 @@ class FixtureUpdate(BaseModel):
 class Fixture(FixtureBase):
     id: Union[str, UUID]
     version: Optional[str] = None
+    filename: Optional[str] = None
+    export_name: Optional[str] = None
+    fixture_file_path: Optional[str] = None
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
     created_at: datetime

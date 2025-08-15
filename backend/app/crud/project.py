@@ -2,11 +2,19 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional, List
 from uuid import UUID
+import asyncio
+import logging
 
 from ..models.project import Project
 from ..models.test_case import TestCase
 from ..models.fixture import Fixture
 from ..schemas.project import ProjectCreate, ProjectUpdate
+from ..services.playwright_project import (
+    create_project as create_playwright_project,
+    playwright_manager
+)
+
+logger = logging.getLogger(__name__)
 
 
 def get_project(db: Session, project_id: UUID) -> Optional[Project]:
@@ -22,7 +30,8 @@ def get_projects_by_user(db: Session, user_id: str, skip: int = 0, limit: int = 
     return db.query(Project).offset(skip).limit(limit).all()
 
 
-def create_project(db: Session, project: ProjectCreate, created_by: str) -> Project:
+async def create_project(db: Session, project: ProjectCreate, created_by: str) -> Project:
+    # Create database project first
     db_project = Project(
         name=project.name,
         description=project.description,
@@ -32,6 +41,25 @@ def create_project(db: Session, project: ProjectCreate, created_by: str) -> Proj
     db.add(db_project)
     db.commit()
     db.refresh(db_project)
+    
+    # Create local Playwright project asynchronously
+    try:
+        # Use project name as folder name (will be cleaned automatically)
+        success, cleaned_name, error = await create_playwright_project(
+            project.name, 
+            force_recreate=False
+        )
+        
+        if success:
+            logger.info(f"Successfully created Playwright project '{cleaned_name}' for database project '{db_project.name}' (ID: {db_project.id})")
+        else:
+            logger.warning(f"Failed to create Playwright project for '{db_project.name}': {error}")
+            # Don't fail the database project creation if Playwright project fails
+            
+    except Exception as e:
+        logger.error(f"Exception while creating Playwright project for '{db_project.name}': {str(e)}")
+        # Don't fail the database project creation if Playwright project fails
+    
     return db_project
 
 
@@ -57,8 +85,23 @@ def delete_project(db: Session, project_id: UUID) -> bool:
     if not db_project:
         return False
     
+    # Store project name before deletion for Playwright cleanup
+    project_name = db_project.name
+    
+    # Delete from database first
     db.delete(db_project)
     db.commit()
+    
+    # Clean up Playwright project
+    try:
+        success, message = playwright_manager.delete_project(project_name)
+        if success:
+            logger.info(f"Successfully deleted Playwright project for '{project_name}'")
+        else:
+            logger.warning(f"Failed to delete Playwright project for '{project_name}': {message}")
+    except Exception as e:
+        logger.error(f"Exception while deleting Playwright project for '{project_name}': {str(e)}")
+    
     return True
 
 

@@ -17,3 +17,4 @@ dist
 .next
 frontend/.env.local
 .DS_Store
+/playwright_projects

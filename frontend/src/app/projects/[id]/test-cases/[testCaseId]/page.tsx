@@ -1346,12 +1346,7 @@ export default function TestCaseDetailPage() {
                                     </div>
                                   )}
                                   
-                                  {step.playwright_script && (
-                                    <div className="p-2 bg-gray-900 dark:bg-gray-950 rounded-md">
-                                      <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Playwright Script</label>
-                                      <pre className="text-xs text-gray-100 mt-1 overflow-x-auto">{step.playwright_script}</pre>
-                                    </div>
-                                  )}
+
                                 </div>
                               </div>
                             </div>
@@ -1718,12 +1713,7 @@ export default function TestCaseDetailPage() {
                             </div>
                           )}
                           
-                          {step.playwright_script && (
-                            <div className="p-2 bg-gray-900 dark:bg-gray-950 rounded-md">
-                              <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Playwright Script</label>
-                              <pre className="text-xs text-gray-100 mt-1 overflow-x-auto">{step.playwright_script}</pre>
-                            </div>
-                          )}
+
                         </div>
                       </div>
                     </div>
@@ -1791,14 +1781,7 @@ export default function TestCaseDetailPage() {
                  <div className="space-y-2 text-sm">
                    <p><strong>Name:</strong> {availableFixtures.find(f => f.id === selectedFixtureId)?.name}</p>
                    <p><strong>Type:</strong> {availableFixtures.find(f => f.id === selectedFixtureId)?.type || 'extend'}</p>
-                   {availableFixtures.find(f => f.id === selectedFixtureId)?.playwright_script && (
-                     <div>
-                       <p><strong>Script Preview:</strong></p>
-                       <pre className="text-xs bg-gray-100 dark:bg-gray-700 p-2 rounded mt-1 overflow-x-auto">
-                         {availableFixtures.find(f => f.id === selectedFixtureId)?.playwright_script}
-                       </pre>
-                     </div>
-                   )}
+
                  </div>
                </div>
              )}

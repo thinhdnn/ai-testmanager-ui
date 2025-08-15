@@ -2,12 +2,69 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from typing import List, Optional
 from uuid import UUID
+import logging
 
 from ..models.test_case import TestCase
 from ..models.fixture import Fixture
 from ..models.step import Step
 from ..schemas.test_case import TestCaseCreate, TestCaseUpdate, TestCaseFixtureCreate, TestCaseFixtureUpdate
 from ..models.test_case import test_case_fixtures
+
+logger = logging.getLogger(__name__)
+
+
+async def regenerate_test_case_script(db: Session, test_case_id: str, project_name: str = None) -> bool:
+    """
+    Regenerate test script file for a test case with all its steps.
+    
+    Args:
+        db: Database session
+        test_case_id: Test case ID
+        project_name: Optional project name (will be inferred from test case if not provided)
+        
+    Returns:
+        bool: True if regeneration successful, False otherwise
+    """
+    try:
+        # Get test case from database
+        test_case = get_test_case(db, test_case_id)
+        if not test_case:
+            logger.error(f"Test case not found: {test_case_id}")
+            return False
+        
+        # Get project name if not provided
+        if not project_name:
+            from ..models.project import Project
+            project = db.query(Project).filter(Project.id == test_case.project_id).first()
+            if project:
+                project_name = project.name
+            else:
+                logger.error(f"Project not found for test case: {test_case_id}")
+                return False
+        
+        # Import here to avoid circular imports
+        from ..services.playwright_test_case import generate_test_script, save_test_script
+        
+        # Generate test script
+        result = generate_test_script(db, test_case_id, project_name)
+        
+        if not result.get('success'):
+            logger.error(f"Failed to generate test script for test case {test_case_id}: {result.get('error')}")
+            return False
+        
+        # Save test script to project
+        save_result = save_test_script(project_name, result)
+        
+        if not save_result.get('success'):
+            logger.error(f"Failed to save test script for test case {test_case_id}: {save_result.get('error')}")
+            return False
+        
+        logger.info(f"Successfully regenerated test script for test case {test_case_id}: {save_result.get('file_path')}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error regenerating test script for test case {test_case_id}: {str(e)}")
+        return False
 
 
 def create_test_case(db: Session, test_case: TestCaseCreate) -> TestCase:

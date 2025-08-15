@@ -1046,12 +1046,7 @@ export default function FixtureDetailPage() {
                                     </div>
                                   )}
                                   
-                                  {step.playwright_script && (
-                                    <div className="p-2 bg-gray-900 dark:bg-gray-950 rounded-md">
-                                      <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Playwright Script</label>
-                                      <pre className="text-xs text-gray-100 mt-1 overflow-x-auto">{step.playwright_script}</pre>
-                                    </div>
-                                  )}
+
                                 </div>
                               </div>
                             </div>
@@ -1262,12 +1257,7 @@ export default function FixtureDetailPage() {
                             </div>
                           )}
                           
-                          {step.playwright_script && (
-                            <div className="p-2 bg-gray-900 dark:bg-gray-950 rounded-md">
-                              <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Playwright Script</label>
-                              <pre className="text-xs text-gray-100 mt-1 overflow-x-auto">{step.playwright_script}</pre>
-                            </div>
-                          )}
+
                         </div>
                       </div>
                     </div>

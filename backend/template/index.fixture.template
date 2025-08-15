@@ -1,0 +1,27 @@
+import { test as base, expect } from '@playwright/test';
+
+{{#if fixtures.length}}
+// Start import fixture
+{{#each fixtures}}
+import { {{this.importName}}, type {{this.exportName}}Type } from './{{this.fileName}}';
+{{/each}}
+// End import fixture
+
+// Create combined fixture type
+type fixtureTypes = {{#each fixtures}}{{this.exportName}}Type{{#unless @last}} & {{/unless}}{{/each}};
+
+// Export the test with combined fixtures
+export const test = base.extend<fixtureTypes>({
+  // Fixture start
+  {{#each fixtures}}
+  ...{{this.importName}},
+  {{/each}}
+  // Fixture end
+});
+{{else}}
+// No fixtures defined yet
+// Export the test with no fixtures
+export const test = base.extend({});
+{{/if}}
+
+export { expect };

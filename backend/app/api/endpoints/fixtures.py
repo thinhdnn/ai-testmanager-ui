@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from uuid import UUID
+from pathlib import Path
+import logging
 
 from ...database import get_db
 from ...schemas.fixture import Fixture, FixtureCreate, FixtureUpdate
@@ -9,6 +11,9 @@ from ...crud import fixture as crud_fixture
 from ...models.versioning import FixtureVersion
 from ...auth import current_active_user
 from ...models.user import User
+from ...services.playwright_fixture import fixture_generator
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -35,20 +40,30 @@ def _create_version(db: Session, fixture, version: str = None):
 
 
 @router.post("/", response_model=Fixture, status_code=status.HTTP_201_CREATED)
-def create_fixture(
+async def create_fixture(
     fixture: FixtureCreate,
     current_user: User = Depends(current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Create new fixture with auto-versioning"""
+    """Create new fixture with auto-versioning and local file generation"""
     # Set created_by from current user
     fixture.created_by = str(current_user.id)
     
-    # Create fixture
-    db_fixture = crud_fixture.create_fixture(db=db, fixture=fixture)
+    # Create fixture (now async to handle file generation)
+    db_fixture = await crud_fixture.create_fixture(db=db, fixture=fixture)
     
     # Auto-create first version
     _create_version(db, db_fixture, "1.0.0")
+    
+    # Auto-regenerate fixtures/index.ts for the project
+    if db_fixture.project_id:
+        from ...services.playwright_project import regenerate_fixtures_index_for_project
+        try:
+            await regenerate_fixtures_index_for_project(db, str(db_fixture.project_id))
+            logger.info(f"Auto-regenerated fixtures/index.ts for project after creating fixture: {db_fixture.id}")
+        except Exception as e:
+            # Log error but don't fail the fixture creation
+            logger.warning(f"Failed to regenerate fixtures/index.ts after creating fixture {db_fixture.id}: {str(e)}")
     
     return db_fixture
 
@@ -84,13 +99,13 @@ def read_fixture(
 
 
 @router.put("/{fixture_id}", response_model=Fixture)
-def update_fixture(
+async def update_fixture(
     fixture_id: str,
     fixture: FixtureUpdate,
     auto_version: bool = Query(True, description="Auto-create version on update"),
     db: Session = Depends(get_db)
 ):
-    """Update fixture with optional auto-versioning"""
+    """Update fixture with optional auto-versioning and index regeneration"""
     db_fixture = crud_fixture.get_fixture(db, fixture_id=fixture_id)
     if db_fixture is None:
         raise HTTPException(status_code=404, detail="Fixture not found")
@@ -102,20 +117,44 @@ def update_fixture(
     # Update fixture  
     updated_fixture = crud_fixture.update_fixture(db=db, fixture_id=fixture_id, fixture=fixture)
     
+    # Auto-regenerate fixtures/index.ts for the project
+    if updated_fixture.project_id:
+        from ...services.playwright_project import regenerate_fixtures_index_for_project
+        try:
+            await regenerate_fixtures_index_for_project(db, str(updated_fixture.project_id))
+            logger.info(f"Auto-regenerated fixtures/index.ts for project after updating fixture: {fixture_id}")
+        except Exception as e:
+            # Log error but don't fail the fixture update
+            logger.warning(f"Failed to regenerate fixtures/index.ts after updating fixture {fixture_id}: {str(e)}")
+    
     return updated_fixture
 
 
 @router.delete("/{fixture_id}")
-def delete_fixture(
+async def delete_fixture(
     fixture_id: str,
     db: Session = Depends(get_db)
 ):
-    """Delete fixture"""
+    """Delete fixture and regenerate index"""
     db_fixture = crud_fixture.get_fixture(db, fixture_id=fixture_id)
     if db_fixture is None:
         raise HTTPException(status_code=404, detail="Fixture not found")
     
+    # Store project_id before deletion
+    project_id = db_fixture.project_id
+    
     crud_fixture.delete_fixture(db=db, fixture_id=fixture_id)
+    
+    # Auto-regenerate fixtures/index.ts for the project
+    if project_id:
+        from ...services.playwright_project import regenerate_fixtures_index_for_project
+        try:
+            await regenerate_fixtures_index_for_project(db, str(project_id))
+            logger.info(f"Auto-regenerated fixtures/index.ts for project after deleting fixture: {fixture_id}")
+        except Exception as e:
+            # Log error but don't fail the fixture deletion
+            logger.warning(f"Failed to regenerate fixtures/index.ts after deleting fixture {fixture_id}: {str(e)}")
+    
     return {"message": "Fixture deleted successfully"}
 
 
@@ -291,4 +330,142 @@ def update_fixture_status(
     db.commit()
     db.refresh(fixture)
     
-    return fixture 
+    return fixture
+
+
+# ============ FIXTURE FILE MANAGEMENT ============
+
+@router.get("/{fixture_id}/file-info")
+def get_fixture_file_info(
+    fixture_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(current_active_user)
+):
+    """Get fixture file information"""
+    fixture = crud_fixture.get_fixture(db, fixture_id=fixture_id)
+    if not fixture:
+        raise HTTPException(status_code=404, detail="Fixture not found")
+    
+    return {
+        "fixture_id": str(fixture.id),
+        "filename": fixture.filename,
+        "export_name": fixture.export_name,
+        "fixture_file_path": fixture.fixture_file_path,
+        "file_exists": bool(fixture.fixture_file_path and Path(fixture.fixture_file_path).exists()) if fixture.fixture_file_path else False
+    }
+
+
+@router.post("/{fixture_id}/regenerate-file")
+async def regenerate_fixture_file(
+    fixture_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(current_active_user)
+):
+    """Regenerate fixture file from current database content"""
+    fixture = crud_fixture.get_fixture(db, fixture_id=fixture_id)
+    if not fixture:
+        raise HTTPException(status_code=404, detail="Fixture not found")
+    
+    # Get project information
+    from ...models.project import Project
+    project = db.query(Project).filter(Project.id == fixture.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    try:
+        # Generate fixture file
+        fixture_result = fixture_generator.generate_fixture(
+            name=fixture.name,
+            fixture_type=fixture.type,
+            content=fixture.playwright_script or "// Add your fixture code here",
+            description=f"Fixture for {project.name}"
+        )
+        
+        if not fixture_result['success']:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate fixture: {fixture_result.get('error')}"
+            )
+        
+        # Save to local project
+        save_result = fixture_generator.save_fixture_to_project(
+            project_name=project.name,
+            fixture_result=fixture_result
+        )
+        
+        if not save_result['success']:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to save fixture file: {save_result.get('error')}"
+            )
+        
+        # Update database with new file information
+        fixture.filename = fixture_result['filename']
+        fixture.export_name = fixture_result['export_name']
+        fixture.fixture_file_path = save_result['file_path']
+        
+        db.commit()
+        db.refresh(fixture)
+        
+        return {
+            "message": "Fixture file regenerated successfully",
+            "file_path": save_result['file_path'],
+            "filename": fixture_result['filename'],
+            "export_name": fixture_result['export_name']
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error regenerating fixture file: {str(e)}"
+        )
+
+
+@router.get("/project/{project_id}/files")
+def list_project_fixture_files(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(current_active_user)
+):
+    """List all fixture files in a project's local directory"""
+    # Get project information
+    from ...models.project import Project
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    try:
+        # List fixtures from local project
+        local_fixtures = fixture_generator.list_project_fixtures(project.name)
+        
+        # Get database fixtures for comparison
+        db_fixtures = crud_fixture.get_fixtures_by_project(db, project_id=project_id)
+        
+        # Create mapping for comparison
+        db_fixture_map = {f.export_name: f for f in db_fixtures if f.export_name}
+        
+        result = []
+        for local_fixture in local_fixtures:
+            db_fixture = db_fixture_map.get(local_fixture['export_name'])
+            result.append({
+                **local_fixture,
+                "in_database": bool(db_fixture),
+                "database_id": str(db_fixture.id) if db_fixture else None,
+                "sync_status": "synced" if db_fixture and db_fixture.fixture_file_path == local_fixture['file_path'] else "out_of_sync"
+            })
+        
+        return {
+            "project_id": project_id,
+            "project_name": project.name,
+            "fixtures": result,
+            "total_files": len(result),
+            "synced_count": len([f for f in result if f['sync_status'] == 'synced'])
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error listing project fixture files: {str(e)}"
+        )

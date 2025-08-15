@@ -1,0 +1,68 @@
+{{#if (eq type "extend")}}
+import { Page, expect, BrowserContext, Browser } from '@playwright/test';
+
+/**
+ * {{name}} {{type}} fixture
+ * {{#if description}}
+ * {{description}}
+ * {{/if}}
+ */
+
+/**
+ * Type definition for fixture
+ */
+export type {{exportName}}Type = {
+  {{exportName}}: boolean;
+};
+
+/**
+ * Fixture uses page context
+ */
+export const {{exportName}} = async ({ page, context, browser }: { page: Page; context: BrowserContext; browser: Browser }, use: (value: boolean) => Promise<void>) => {
+  {{{content}}}
+  {{#if steps}}
+  
+  // Steps
+  {{#each steps}}
+  {{/each}}
+  {{/if}}
+  
+  await use(true);
+};
+
+/**
+ *  Fixture in base.extend()
+ */
+export const {{exportName}}Fixture = {
+  {{exportName}},
+};
+
+{{else if (eq type "inline")}}
+import { Page, expect } from '@playwright/test';
+
+/**
+ * {{name}} {{type}} fixture
+ * {{#if description}}
+ * {{description}}
+ * {{/if}}
+ */
+
+/**
+ * Inline page
+ */
+export async function {{exportName}}(page: Page): Promise<void> {
+  {{{content}}}
+  {{#if steps}}
+  
+  // Steps
+  {{#each steps}}
+  {{/each}}
+  {{/if}}
+}
+
+{{else}}
+// Unsupported fixture type '{{type}}'
+{{/if}}
+
+
+export { expect };

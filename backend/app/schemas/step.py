@@ -15,6 +15,13 @@ class StepBase(BaseModel):
     fixture_id: Optional[UUID] = None
     referenced_fixture_id: Optional[UUID] = None
 
+    @validator('test_case_id', 'fixture_id', 'referenced_fixture_id', pre=True)
+    def empty_string_to_none(cls, v):
+        """Convert empty strings to None for UUID fields"""
+        if v == "":
+            return None
+        return v
+
 
 class StepCreate(StepBase):
     created_by: Optional[str] = None
@@ -31,6 +38,13 @@ class StepUpdate(BaseModel):
     fixture_id: Optional[UUID] = None
     referenced_fixture_id: Optional[UUID] = None
     updated_by: Optional[str] = None
+
+    @validator('test_case_id', 'fixture_id', 'referenced_fixture_id', pre=True)
+    def empty_string_to_none(cls, v):
+        """Convert empty strings to None for UUID fields"""
+        if v == "":
+            return None
+        return v
 
 
 class StepInDB(StepBase):
