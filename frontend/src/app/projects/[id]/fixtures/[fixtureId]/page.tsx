@@ -116,7 +116,7 @@ export default function FixtureDetailPage() {
       const [fixtureData, statsData, stepsData, versionsData] = await Promise.all([
         apiClient(`/fixtures/${fixtureId}`),
         apiClient(`/test-results/fixtures/${fixtureId}/stats`),
-        apiClient(`/steps/fixtures/${fixtureId}/steps`),
+        apiClient(`/fixtures/${fixtureId}/steps`), // Changed to use fixture's own steps
         apiClient(`/fixtures/${fixtureId}/versions`)
       ])
       
@@ -171,7 +171,7 @@ export default function FixtureDetailPage() {
             setVersions(versionsData)
             break
           case "steps":
-            const stepsData = await apiClient(`/steps/fixtures/${fixtureId}/steps`)
+            const stepsData = await apiClient(`/fixtures/${fixtureId}/steps`) // Changed to use fixture's own steps
             setSteps(stepsData)
             break
           case "details":
@@ -240,7 +240,7 @@ export default function FixtureDetailPage() {
       setShowPlaywrightScript(false)
       // Reload steps and fixture data to get updated version
       const [stepsData, fixtureData] = await Promise.all([
-        apiClient(`/steps/fixtures/${fixtureId}/steps`),
+        apiClient(`/fixtures/${fixtureId}/steps`), // Changed to use fixture's own steps
         apiClient(`/fixtures/${fixtureId}`)
       ])
       setSteps(stepsData)
@@ -291,7 +291,7 @@ export default function FixtureDetailPage() {
       
       // Reload steps and fixture data to get updated version
       const [stepsData, fixtureData] = await Promise.all([
-        apiClient(`/steps/fixtures/${fixtureId}/steps`),
+        apiClient(`/fixtures/${fixtureId}/steps`), // Changed to use fixture's own steps
         apiClient(`/fixtures/${fixtureId}`)
       ])
       setSteps(stepsData)
@@ -347,7 +347,7 @@ export default function FixtureDetailPage() {
 
       // Reload steps and fixture data to get updated version
       const [stepsData, fixtureData] = await Promise.all([
-        apiClient(`/steps/fixtures/${fixtureId}/steps`),
+        apiClient(`/fixtures/${fixtureId}/steps`), // Changed to use fixture's own steps
         apiClient(`/fixtures/${fixtureId}`)
       ])
       setSteps(stepsData)
@@ -941,7 +941,7 @@ export default function FixtureDetailPage() {
                                 method: "PATCH"
                               })
                               // Reload steps
-                              const stepsData = await apiClient(`/steps/fixtures/${fixtureId}/steps`)
+                              const stepsData = await apiClient(`/fixtures/${fixtureId}/steps`) // Changed to use fixture's own steps
                               setSteps(stepsData)
                             } catch (err) {
                               console.error('Error reordering steps:', err)

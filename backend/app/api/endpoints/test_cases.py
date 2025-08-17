@@ -11,6 +11,7 @@ from ...models.versioning import TestCaseVersion, StepVersion
 from ...auth import current_active_user
 from ...models.user import User
 from ...services.playwright_test_case import generate_test_script, save_test_script, list_test_scripts
+from ...crud import fixture as crud_fixture
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ async def create_test_case(
 ):
     """Create new test case with auto-versioning and auto-script generation"""
     # Create test case
-    db_test_case = crud_test_case.create_test_case(db=db, test_case=test_case)
+    db_test_case = await crud_test_case.create_test_case(db=db, test_case=test_case)
     
     # Auto-create first version
     _create_version(db, db_test_case, "1.0.0")
@@ -144,7 +145,7 @@ async def update_test_case(
         new_version = _create_version(db, db_test_case)
     
     # Update test case  
-    updated_test_case = crud_test_case.update_test_case(db=db, test_case_id=test_case_id, test_case=test_case)
+    updated_test_case = await crud_test_case.update_test_case(db=db, test_case_id=test_case_id, test_case=test_case)
     
     # Update version field if new version was created
     if new_version:
@@ -546,34 +547,34 @@ def get_test_case_fixture_steps(
     fixture_id: str,
     db: Session = Depends(get_db)
 ):
-    """Get steps for a specific fixture in a test case"""
+    """Get all steps of a test case that reference a specific fixture"""
     # Check if test case exists
-    test_case = crud_test_case.get_test_case(db, test_case_id)
+    test_case = crud_test_case.get_test_case(db, test_case_id=test_case_id)
     if not test_case:
         raise HTTPException(status_code=404, detail="Test case not found")
     
-    # Check if fixture is associated with test case
-    fixtures = crud_test_case.get_test_case_fixtures(db, test_case_id)
-    fixture_exists = any(f["fixture_id"] == fixture_id for f in fixtures)
-    if not fixture_exists:
-        raise HTTPException(status_code=404, detail="Fixture not found in test case")
+    # Check if fixture exists
+    fixture = crud_fixture.get_fixture(db, fixture_id=fixture_id)
+    if not fixture:
+        raise HTTPException(status_code=404, detail="Fixture not found")
     
-    # Get fixture steps
+    # Get steps that reference this fixture
     from ...models.step import Step
     steps = db.query(Step).filter(
-        Step.fixture_id == fixture_id
+        Step.test_case_id == test_case_id,
+        Step.referenced_fixture_id == fixture_id
     ).order_by(Step.order).all()
     
     return [
         {
             "id": str(step.id),
-            "fixture_id": str(step.fixture_id),
             "action": step.action,
             "data": step.data,
             "expected": step.expected,
             "playwright_script": step.playwright_script,
             "order": step.order,
             "disabled": step.disabled,
+            "referenced_fixture_id": str(step.referenced_fixture_id),
             "created_at": step.created_at,
             "updated_at": step.updated_at
         }

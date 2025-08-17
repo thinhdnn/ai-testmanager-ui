@@ -345,7 +345,7 @@ class PlaywrightFixtureGenerator:
             
             return {
                 'success': True,
-                'file_path': str(fixture_file_path),
+                'file_path': f"fixtures/{fixture_result['filename']}",  # Relative path from project directory
                 'project_name': project_name,
                 'fixture_name': fixture_result['export_name']
             }
@@ -405,7 +405,7 @@ class PlaywrightFixtureGenerator:
                         'filename': fixture_file.name,
                         'export_name': export_name,
                         'description': description,
-                        'file_path': str(fixture_file),
+                        'file_path': f"fixtures/{fixture_file.name}",  # Relative path from project directory
                         'size': fixture_file.stat().st_size
                     })
                     

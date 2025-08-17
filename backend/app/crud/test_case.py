@@ -3,6 +3,7 @@ from sqlalchemy import and_
 from typing import List, Optional
 from uuid import UUID
 import logging
+from pathlib import Path
 
 from ..models.test_case import TestCase
 from ..models.fixture import Fixture
@@ -11,6 +12,56 @@ from ..schemas.test_case import TestCaseCreate, TestCaseUpdate, TestCaseFixtureC
 from ..models.test_case import test_case_fixtures
 
 logger = logging.getLogger(__name__)
+
+
+def _read_test_case_file_content(test_file_path: str) -> Optional[str]:
+    """
+    Read test case file content from filesystem
+    
+    Args:
+        test_file_path: Path to test case file (can be absolute or relative)
+        
+    Returns:
+        File content as string, or None if file not found/readable
+    """
+    try:
+        if not test_file_path:
+            return None
+            
+        file_path = Path(test_file_path)
+        
+        # If it's a relative path, make it absolute by joining with project root
+        if not file_path.is_absolute():
+            # Get project root (assuming we're in backend/app/crud)
+            current_file = Path(__file__)
+            project_root = current_file.parent.parent.parent.parent  # Go up to project root
+            playwright_projects_dir = project_root / "playwright_projects"
+            
+            # Try to find the file in playwright_projects directory
+            # test_file_path might be like "tests/loginTest.spec.ts"
+            for project_dir in playwright_projects_dir.glob("*"):
+                if project_dir.is_dir():
+                    potential_file = project_dir / test_file_path
+                    if potential_file.exists():
+                        file_path = potential_file
+                        break
+            else:
+                # If not found in any project, try as relative to project root
+                file_path = project_root / test_file_path
+        
+        # Read file content
+        if file_path.exists() and file_path.is_file():
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            logger.info(f"Successfully read test case file content: {file_path}")
+            return content
+        else:
+            logger.warning(f"Test case file not found: {file_path}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error reading test case file {test_file_path}: {str(e)}")
+        return None
 
 
 async def regenerate_test_case_script(db: Session, test_case_id: str, project_name: str = None) -> bool:
@@ -59,6 +110,22 @@ async def regenerate_test_case_script(db: Session, test_case_id: str, project_na
             logger.error(f"Failed to save test script for test case {test_case_id}: {save_result.get('error')}")
             return False
         
+        # Read the generated file content and save to playwright_script
+        file_content = _read_test_case_file_content(save_result.get('file_path'))
+        if file_content and test_case:
+            test_case.playwright_script = file_content
+            logger.info(f"Successfully read and saved test case file content to database")
+        else:
+            logger.warning(f"Could not read test case file content from: {save_result.get('file_path')}")
+        
+        # Commit the updated test_file_path if it was updated
+        if save_result.get('renamed') and test_case:
+            try:
+                db.commit()
+                logger.info(f"Updated test case {test_case_id} with new file path: {save_result.get('file_path')}")
+            except Exception as e:
+                logger.warning(f"Failed to commit test case file path update: {str(e)}")
+        
         logger.info(f"Successfully regenerated test script for test case {test_case_id}: {save_result.get('file_path')}")
         return True
         
@@ -67,11 +134,62 @@ async def regenerate_test_case_script(db: Session, test_case_id: str, project_na
         return False
 
 
-def create_test_case(db: Session, test_case: TestCaseCreate) -> TestCase:
+async def create_test_case(db: Session, test_case: TestCaseCreate) -> TestCase:
     db_test_case = TestCase(**test_case.dict())
     db.add(db_test_case)
     db.commit()
     db.refresh(db_test_case)
+    
+    # Generate test case file and read content
+    try:
+        # Get project name
+        from ..models.project import Project
+        project = db.query(Project).filter(Project.id == db_test_case.project_id).first()
+        if project:
+            project_name = project.name
+            
+            # Import here to avoid circular imports
+            from ..services.playwright_test_case import test_case_generator
+            
+            # Generate test case file
+            test_result = test_case_generator.generate_test_case(
+                db=db,
+                test_case_id=str(db_test_case.id),
+                project_name=project_name
+            )
+            
+            if test_result.get('success'):
+                # Save test case file to project
+                save_result = await test_case_generator.save_test_case_to_project(
+                    project_name=project_name,
+                    test_result=test_result,
+                    test_case_db=db_test_case
+                )
+                
+                if save_result.get('success'):
+                    # Read the generated file content and save to playwright_script
+                    file_content = _read_test_case_file_content(save_result.get('file_path'))
+                    if file_content:
+                        db_test_case.playwright_script = file_content
+                        logger.info(f"Successfully read and saved test case file content to database")
+                    else:
+                        logger.warning(f"Could not read test case file content from: {save_result.get('file_path')}")
+                    
+                    db.commit()
+                    db.refresh(db_test_case)
+                    
+                    logger.info(f"Successfully created test case file: {save_result.get('file_path')}")
+                else:
+                    logger.warning(f"Failed to save test case file: {save_result.get('error')}")
+            else:
+                logger.warning(f"Failed to generate test case file: {test_result.get('error')}")
+        else:
+            logger.warning(f"Project not found for test case: {db_test_case.id}")
+            
+    except Exception as e:
+        logger.error(f"Error creating test case file: {str(e)}")
+        # Don't fail the database creation if file generation fails
+    
     return db_test_case
 
 
@@ -91,12 +209,65 @@ def get_test_cases_by_status(db: Session, status: str, skip: int = 0, limit: int
     return db.query(TestCase).filter(TestCase.status == status).offset(skip).limit(limit).all()
 
 
-def update_test_case(db: Session, test_case_id: str, test_case: TestCaseUpdate) -> Optional[TestCase]:
+async def update_test_case(db: Session, test_case_id: str, test_case: TestCaseUpdate) -> Optional[TestCase]:
     db_test_case = get_test_case(db, test_case_id)
     if db_test_case:
         update_data = test_case.dict(exclude_unset=True)
+        
+        # Check if we need to regenerate test file (if certain fields changed)
+        should_regenerate = any(field in update_data for field in ['name', 'description', 'playwright_script', 'is_manual'])
+        
         for field, value in update_data.items():
             setattr(db_test_case, field, value)
+        
+        # Regenerate test case file if needed
+        if should_regenerate:
+            try:
+                # Get project name
+                from ..models.project import Project
+                project = db.query(Project).filter(Project.id == db_test_case.project_id).first()
+                if project:
+                    project_name = project.name
+                    
+                    # Import here to avoid circular imports
+                    from ..services.playwright_test_case import test_case_generator
+                    
+                    # Generate test case file
+                    test_result = test_case_generator.generate_test_case(
+                        db=db,
+                        test_case_id=str(db_test_case.id),
+                        project_name=project_name
+                    )
+                    
+                    if test_result.get('success'):
+                        # Save test case file to project
+                        save_result = await test_case_generator.save_test_case_to_project(
+                            project_name=project_name,
+                            test_result=test_result,
+                            test_case_db=db_test_case
+                        )
+                        
+                        if save_result.get('success'):
+                            # Read the updated file content and save to playwright_script
+                            file_content = _read_test_case_file_content(save_result.get('file_path'))
+                            if file_content:
+                                db_test_case.playwright_script = file_content
+                                logger.info(f"Successfully read and updated test case file content in database")
+                            else:
+                                logger.warning(f"Could not read updated test case file content from: {save_result.get('file_path')}")
+                            
+                            logger.info(f"Successfully updated test case file: {save_result.get('file_path')}")
+                        else:
+                            logger.warning(f"Failed to save updated test case file: {save_result.get('error')}")
+                    else:
+                        logger.warning(f"Failed to generate updated test case file: {test_result.get('error')}")
+                else:
+                    logger.warning(f"Project not found for test case: {test_case_id}")
+                    
+            except Exception as e:
+                logger.error(f"Error updating test case file: {str(e)}")
+                # Don't fail the database update if file generation fails
+        
         db.commit()
         db.refresh(db_test_case)
     return db_test_case

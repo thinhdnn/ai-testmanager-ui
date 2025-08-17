@@ -98,11 +98,24 @@ def read_fixture(
     return db_fixture
 
 
+@router.get("/{fixture_id}/detail")
+def read_fixture_detail(
+    fixture_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get fixture detail with test cases information"""
+    fixture_detail = crud_fixture.get_fixture_detail(db, fixture_id=fixture_id)
+    if fixture_detail is None:
+        raise HTTPException(status_code=404, detail="Fixture not found")
+    return fixture_detail
+
+
 @router.put("/{fixture_id}", response_model=Fixture)
 async def update_fixture(
     fixture_id: str,
     fixture: FixtureUpdate,
     auto_version: bool = Query(True, description="Auto-create version on update"),
+    current_user: User = Depends(current_active_user),
     db: Session = Depends(get_db)
 ):
     """Update fixture with optional auto-versioning and index regeneration"""
@@ -114,8 +127,13 @@ async def update_fixture(
     if auto_version:
         _create_version(db, db_fixture)
     
-    # Update fixture  
-    updated_fixture = crud_fixture.update_fixture(db=db, fixture_id=fixture_id, fixture=fixture)
+    # Update fixture with updated_by field
+    updated_fixture = crud_fixture.update_fixture(
+        db=db, 
+        fixture_id=fixture_id, 
+        fixture=fixture,
+        updated_by=str(current_user.id)
+    )
     
     # Auto-regenerate fixtures/index.ts for the project
     if updated_fixture.project_id:
@@ -284,34 +302,34 @@ def get_fixture_version_steps(
     version: str,
     db: Session = Depends(get_db)
 ):
-    """Get steps for a specific version of a fixture"""
-    # Check if fixture exists
-    fixture = crud_fixture.get_fixture(db, fixture_id=fixture_id)
-    if not fixture:
-        raise HTTPException(status_code=404, detail="Fixture not found")
+    """Get all steps of a specific fixture version"""
+    # Get fixture version
+    fixture_version = crud_fixture.get_fixture_version(db, fixture_id=fixture_id, version=version)
+    if not fixture_version:
+        raise HTTPException(status_code=404, detail="Fixture version not found")
     
-    # For now, return current steps since fixture versions don't store steps separately
-    # In the future, you might want to store steps with versions
-    from ...models.step import Step
+    # Get steps that reference this fixture
     steps = db.query(Step).filter(
-        Step.fixture_id == fixture_id
+        Step.referenced_fixture_id == fixture_id
     ).order_by(Step.order).all()
     
-    return [
-        {
+    # Convert to dict format
+    steps_data = []
+    for step in steps:
+        steps_data.append({
             "id": str(step.id),
-            "fixture_id": str(step.fixture_id),
             "action": step.action,
             "data": step.data,
             "expected": step.expected,
             "playwright_script": step.playwright_script,
             "order": step.order,
             "disabled": step.disabled,
+            "referenced_fixture_id": str(step.referenced_fixture_id),
             "created_at": step.created_at,
             "updated_at": step.updated_at
-        }
-        for step in steps
-    ]
+        })
+    
+    return steps_data
 
 
 @router.patch("/{fixture_id}/status")
@@ -469,3 +487,43 @@ def list_project_fixture_files(
             status_code=500,
             detail=f"Error listing project fixture files: {str(e)}"
         )
+
+
+# ============ FIXTURE STEPS ENDPOINTS ============
+
+@router.get("/{fixture_id}/steps", response_model=List[dict])
+def get_fixture_steps(
+    fixture_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get steps that belong to this fixture (fixture's own steps)"""
+    from ...crud import step as crud_step
+    
+    # Check if fixture exists
+    fixture = crud_fixture.get_fixture(db, fixture_id=fixture_id)
+    if not fixture:
+        raise HTTPException(status_code=404, detail="Fixture not found")
+    
+    # Get fixture's own steps (not steps that reference this fixture)
+    steps = crud_step.get_fixture_steps(db, fixture_id=fixture_id)
+    
+    # Convert to dict format for response
+    steps_data = []
+    for step in steps:
+        steps_data.append({
+            "id": str(step.id),
+            "action": step.action,
+            "data": step.data,
+            "expected": step.expected,
+            "playwright_script": step.playwright_script,
+            "order": step.order,
+            "disabled": step.disabled,
+            "referenced_fixture_id": str(step.referenced_fixture_id) if step.referenced_fixture_id else None,
+            "referenced_fixture_name": getattr(step, 'referenced_fixture_name', None),
+            "created_at": step.created_at,
+            "updated_at": step.updated_at,
+            "created_by": step.created_by,
+            "updated_by": step.updated_by
+        })
+    
+    return steps_data

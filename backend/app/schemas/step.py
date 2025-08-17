@@ -12,10 +12,10 @@ class StepBase(BaseModel):
     order: int
     disabled: bool = False
     test_case_id: Optional[UUID] = None
-    fixture_id: Optional[UUID] = None
     referenced_fixture_id: Optional[UUID] = None
+    referenced_fixture_type: Optional[str] = None  # "extend" or "inline"
 
-    @validator('test_case_id', 'fixture_id', 'referenced_fixture_id', pre=True)
+    @validator('test_case_id', 'referenced_fixture_id', pre=True)
     def empty_string_to_none(cls, v):
         """Convert empty strings to None for UUID fields"""
         if v == "":
@@ -35,11 +35,11 @@ class StepUpdate(BaseModel):
     order: Optional[int] = None
     disabled: Optional[bool] = None
     test_case_id: Optional[UUID] = None
-    fixture_id: Optional[UUID] = None
     referenced_fixture_id: Optional[UUID] = None
+    referenced_fixture_type: Optional[str] = None
     updated_by: Optional[str] = None
 
-    @validator('test_case_id', 'fixture_id', 'referenced_fixture_id', pre=True)
+    @validator('test_case_id', 'referenced_fixture_id', pre=True)
     def empty_string_to_none(cls, v):
         """Convert empty strings to None for UUID fields"""
         if v == "":

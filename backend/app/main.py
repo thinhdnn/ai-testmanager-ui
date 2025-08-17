@@ -8,17 +8,13 @@ import traceback
 import logging
 
 from .config import settings
-from .database import engine, get_db
+from .database import get_db, get_engine, Base
 from .models import *
-from .database import Base
 from .api.api import api_router
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
-# Create tables
-Base.metadata.create_all(bind=engine)
 
 # Create FastAPI app
 app = FastAPI(
@@ -28,6 +24,16 @@ app = FastAPI(
     # Disable automatic redirect for trailing slashes
     redirect_slashes=False
 )
+
+@app.on_event("startup")
+async def startup_event():
+    """Create database tables on startup"""
+    try:
+        Base.metadata.create_all(bind=get_engine())
+        logger.info("Database tables created successfully")
+    except Exception as e:
+        logger.error(f"Failed to create database tables: {e}")
+        # Don't fail startup if database is not available
 
 # Add CORS middleware
 app.add_middleware(

@@ -13,8 +13,11 @@ test('{{testCaseName}}'{{#if tags}}, {
   {{#if data}}// Data: {{data}}{{/if}}
   {{#if expected}}// Expected: {{expected}}{{/if}}
   {{#if disabled}}/* DISABLED STEP
+  {{#if referenced_fixture_id}}// Inline fixture: {{referenced_fixture_name}}
+  await {{referenced_fixture_name}}();{{/if}}
   {{{playwrightCode}}}
-  */{{else}}{{#if playwrightCode}}
+  */{{else}}{{#if referenced_fixture_id}}{{#if (eq referenced_fixture_type "inline")}}// Inline fixture: {{referenced_fixture_name}}
+  await {{referenced_fixture_name}}();{{/if}}{{/if}}{{#if playwrightCode}}
   {{{playwrightCode}}}{{else}}
   // TODO: Implement this step{{/if}}{{/if}}
   {{#unless @last}}

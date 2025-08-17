@@ -53,10 +53,10 @@ source venv/bin/activate
 # Create tables
 echo "🏗️  Creating tables from models..."
 python -c "
-from app.database import engine, Base
+from app.database import get_engine, Base
 from app.models import *
 print('Creating all tables...')
-Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=get_engine())
 print('✅ Tables created successfully!')
 "
 

@@ -1273,7 +1273,7 @@ export default function TestCaseDetailPage() {
                                 </div>
                                 <div className="flex-1 space-y-2">
                                   <div className="flex items-center justify-between">
-                                    <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                                    <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                                       {step.referenced_fixture_id ? (
                                         <Badge 
                                           variant="outline" 
@@ -1288,6 +1288,17 @@ export default function TestCaseDetailPage() {
                                         </Badge>
                                       ) : (
                                         step.action.charAt(0).toUpperCase() + step.action.slice(1)
+                                      )}
+                                      {/* Show icon when test case is not manual and step has no playwright script and no fixture reference */}
+                                      {!testCase.is_manual && !step.playwright_script && !step.referenced_fixture_id && (
+                                        <div 
+                                          className="w-4 h-4 text-amber-500 cursor-help"
+                                          title="Playwright script not available"
+                                        >
+                                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                          </svg>
+                                        </div>
                                       )}
                                     </h4>
                                     <div className="flex items-center gap-2">
@@ -1695,8 +1706,19 @@ export default function TestCaseDetailPage() {
                           <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">{step.order}</span>
                         </div>
                         <div className="flex-1 space-y-2">
-                          <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                             {step.action.charAt(0).toUpperCase() + step.action.slice(1)}
+                            {/* Show icon when test case is not manual and step has no playwright script and no fixture reference */}
+                            {!testCase.is_manual && !step.playwright_script && !step.referenced_fixture_id && (
+                              <div 
+                                className="w-4 h-4 text-amber-500 cursor-help"
+                                title="Playwright script not available"
+                              >
+                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                </svg>
+                              </div>
+                            )}
                           </h4>
                           
                           {step.data && (

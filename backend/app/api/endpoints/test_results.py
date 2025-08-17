@@ -203,12 +203,8 @@ def get_fixture_execution_statistics(
     db: Session = Depends(get_db)
 ):
     """Get execution statistics for a fixture"""
-    # For now, return default stats since fixtures don't have executions
-    # In the future, you might want to implement fixture-specific stats
-    return {
-        "total_executions": 0,
-        "total_test_cases_used": 0,
-        "success_rate": 0,
-        "avg_duration": 0,
-        "last_status": "not-run"
-    } 
+    from ...crud.fixture import get_fixture_execution_statistics
+    
+    # Get real statistics from CRUD
+    stats = get_fixture_execution_statistics(db, fixture_id)
+    return stats 
