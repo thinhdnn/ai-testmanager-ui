@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 import { apiClient } from "@/lib/apiClient"
-import { Zap, Database, CheckCircle, Code, ListOrdered, Ban, PlusCircle, XCircle, ChevronDown, ChevronUp, Edit, Trash2, RotateCcw, GripVertical, MoreHorizontal, Settings } from "lucide-react"
+import { Zap, Database, CheckCircle, Code, ListOrdered, Ban, PlusCircle, XCircle, ChevronDown, ChevronUp, Edit, Trash2, RotateCcw, GripVertical, MoreHorizontal, Settings, Play } from "lucide-react"
 
 interface TestCaseDetail {
   id: string
@@ -33,7 +33,6 @@ interface TestCaseDetail {
   created_by: string
   updated_by: string
   last_run_by: string
-  author_name?: string
 }
 
 interface TestCaseExecution {
@@ -134,6 +133,21 @@ export default function TestCaseDetailPage() {
   const [savingTestName, setSavingTestName] = useState(false)
   const [restoringVersion, setRestoringVersion] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [runningTest, setRunningTest] = useState(false)
+  const [runSettingsOpen, setRunSettingsOpen] = useState(false)
+  const [testResultOpen, setTestResultOpen] = useState(false)
+  const [testResult, setTestResult] = useState<any>(null)
+  const [schedulingMessage, setSchedulingMessage] = useState("")
+  const [activeResultTab, setActiveResultTab] = useState<'executions' | 'logs'>('executions')
+  const [runSettings, setRunSettings] = useState({
+    timeout: 30, // Default 30 seconds (for display only)
+    expect_timeout: 10, // Default 10 seconds (for display only)
+    headless: true,
+    screenshot: 'off' as 'off' | 'on' | 'only-on-failure',
+    video: 'off' as 'off' | 'on' | 'retain-on-failure' | 'on-first-retry',
+    executionMode: 'wait' as 'wait' | 'background', // Default to wait for result
+    browser: 'chromium' as 'chromium' | 'firefox' | 'webkit' // Default to chromium
+  })
 
   // Filter available fixtures based on step order
   const getFilteredFixtures = () => {
@@ -151,13 +165,14 @@ export default function TestCaseDetailPage() {
     setError(null)
     
     try {
-      const [testCaseData, executionsData, statsData, stepsData, fixturesData, versionsData] = await Promise.all([
+      const [testCaseData, executionsData, statsData, stepsData, fixturesData, versionsData, projectSettings] = await Promise.all([
         apiClient(`/test-cases/${testCaseId}`),
         apiClient(`/test-results/test-cases/${testCaseId}/executions?limit=20`),
         apiClient(`/test-results/test-cases/${testCaseId}/stats`),
         apiClient(`/steps/test-cases/${testCaseId}/steps`),
         apiClient(`/test-cases/${testCaseId}/fixtures`),
-        apiClient(`/test-cases/${testCaseId}/versions`)
+        apiClient(`/test-cases/${testCaseId}/versions`),
+        apiClient(`/projects/${projectId}/settings/dict`)
       ])
       
       if (!testCaseData) {
@@ -171,6 +186,28 @@ export default function TestCaseDetailPage() {
       setSteps(stepsData)
       setFixtures(fixturesData)
       setVersions(versionsData)
+      
+      // Load project settings for run settings (convert milliseconds to seconds for display)
+      if (projectSettings) {
+        if (projectSettings.TIMEOUT) {
+          setRunSettings(prev => ({ ...prev, timeout: Math.round(parseInt(projectSettings.TIMEOUT) / 1000) }))
+        }
+        if (projectSettings.EXPECT_TIMEOUT) {
+          setRunSettings(prev => ({ ...prev, expect_timeout: Math.round(parseInt(projectSettings.EXPECT_TIMEOUT) / 1000) }))
+        }
+        if (projectSettings.HEADLESS_MODE) {
+          setRunSettings(prev => ({ ...prev, headless: projectSettings.HEADLESS_MODE === 'true' }))
+        }
+        if (projectSettings.SCREENSHOT) {
+          setRunSettings(prev => ({ ...prev, screenshot: projectSettings.SCREENSHOT as any }))
+        }
+        if (projectSettings.VIDEO) {
+          setRunSettings(prev => ({ ...prev, video: projectSettings.VIDEO as any }))
+        }
+        if (projectSettings.BROWSER) {
+          setRunSettings(prev => ({ ...prev, browser: projectSettings.BROWSER as 'chromium' | 'firefox' | 'webkit' }))
+        }
+      }
     } catch (err: any) {
       if (err.message?.includes("404")) {
         notFound()
@@ -672,6 +709,70 @@ export default function TestCaseDetailPage() {
     return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`
   }
 
+  const handleRunTest = async () => {
+    if (!testCase || testCase.is_manual) {
+      alert("Cannot run manual tests automatically")
+      return
+    }
+
+    if (!testCase.test_file_path) {
+      alert("No test file path specified for this test case")
+      return
+    }
+
+    if (runSettings.executionMode === 'background') {
+      // Background run - show scheduling message and close form
+      setSchedulingMessage("Scheduling test execution...")
+      setTimeout(() => {
+        setSchedulingMessage("")
+        setRunSettingsOpen(false)
+      }, 2000)
+      return
+    }
+
+    // Wait for result mode
+    setRunningTest(true)
+    try {
+      // Call the backend API to run the test locally
+      const response = await apiClient(`/test-cases/${testCaseId}/run`, {
+        method: "POST",
+        body: JSON.stringify({
+          project_id: projectId,
+          test_file_path: testCase.test_file_path,
+          settings: {
+            timeout: runSettings.timeout * 1000, // Convert seconds to milliseconds for backend
+            expect_timeout: runSettings.expect_timeout * 1000, // Convert seconds to milliseconds for backend
+            headless: runSettings.headless,
+            screenshot: runSettings.screenshot,
+            video: runSettings.video,
+            browser: runSettings.browser // Add browser selection
+          }
+        }),
+        headers: { "Content-Type": "application/json" }
+      })
+
+      if (response.success) {
+        // Store test result and show result form
+        setTestResult(response)
+        setRunSettingsOpen(false)
+        setTestResultOpen(true)
+        // Refresh executions data
+        const executionsData = await apiClient(`/test-results/test-cases/${testCaseId}/executions?limit=20`)
+        setExecutions(executionsData)
+        // Refresh stats
+        const statsData = await apiClient(`/test-results/test-cases/${testCaseId}/stats`)
+        setStats(statsData)
+      } else {
+        alert(`Test execution failed: ${response.error || 'Unknown error'}`)
+      }
+    } catch (err: any) {
+      console.error('Error running test:', err)
+      alert(`Failed to run test: ${err.message || 'Unknown error'}`)
+    } finally {
+      setRunningTest(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -825,7 +926,7 @@ export default function TestCaseDetailPage() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
-                    {testCase.author_name || "Unknown"}
+                    {testCase.created_by || "Unknown"}
                   </span>
                   <span className="flex items-center gap-1">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -836,6 +937,22 @@ export default function TestCaseDetailPage() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
+                <Button 
+                  onClick={() => setRunSettingsOpen(true)}
+                  disabled={runningTest || testCase.is_manual || !testCase.test_file_path}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 flex items-center gap-2"
+                  title={testCase.is_manual ? "Cannot run manual tests" : !testCase.test_file_path ? "No test file path specified" : "Run this test locally"}
+                >
+                  {runningTest ? (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <Play className="w-4 h-4" />
+                  )}
+                  {runningTest ? "Running..." : "Run Test"}
+                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button 
@@ -1063,7 +1180,7 @@ export default function TestCaseDetailPage() {
                         <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                           <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Created By</label>
                           <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mt-1">
-                            {testCase.author_name || "Unknown"}
+                            {testCase.created_by || "Unknown"}
                           </p>
                         </div>
                         <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
@@ -1079,7 +1196,7 @@ export default function TestCaseDetailPage() {
 
                 <TabsContent value="steps" className="space-y-4 mt-0">
                   <Dialog open={addStepOpen} onOpenChange={setAddStepOpen}>
-                    <DialogContent className="min-w-4xl" style={{minWidth: '1200px'}}>
+                    <DialogContent className="w-full max-w-6xl max-h-[90vh] overflow-y-auto" style={{minWidth: '1000px', width: 'min(1152px, 95vw)'}}>
                       <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                           <PlusCircle className="w-6 h-6 text-blue-500" /> {editMode ? "Edit Step" : "Add New Step"}
@@ -1087,13 +1204,16 @@ export default function TestCaseDetailPage() {
                       </DialogHeader>
                       <form onSubmit={(e: React.FormEvent) => { e.preventDefault(); handleAddStep(); }}>
                         <div className="grid gap-4">
-                          <div className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
-                            <Zap className="w-5 h-5 text-yellow-500 flex-shrink-0" />
-                            <label className="block text-sm font-semibold mb-0 w-32 flex-shrink-0">
-                              Action {!newStep.referenced_fixture_id && <span className="text-red-500">*</span>}
-                            </label>
+                          {/* Action Field */}
+                          <div className="flex flex-col gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
+                            <div className="flex items-center gap-3">
+                              <Zap className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+                              <label className="text-sm font-semibold mb-0">
+                                Action {!newStep.referenced_fixture_id && <span className="text-red-500">*</span>}
+                              </label>
+                            </div>
                             <Input 
-                              className="flex-1" 
+                              className="w-full" 
                               placeholder={newStep.referenced_fixture_id ? "Action (optional when calling fixture)" : "Action"} 
                               value={newStep.action} 
                               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewStep(s => ({ ...s, action: e.target.value }))} 
@@ -1101,54 +1221,68 @@ export default function TestCaseDetailPage() {
                               disabled={!!newStep.referenced_fixture_id}
                             />
                           </div>
-                          <div className="flex gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
-                            <Database className="w-5 h-5 text-indigo-500 flex-shrink-0 mt-1" />
-                            <label className="block text-sm font-semibold mb-0 w-32 flex-shrink-0">Data</label>
+
+                          {/* Data Field */}
+                          <div className="flex flex-col gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
+                            <div className="flex items-center gap-3">
+                              <Database className="w-5 h-5 text-indigo-500 flex-shrink-0" />
+                              <label className="text-sm font-semibold mb-0">Data</label>
+                            </div>
                             <Textarea 
-                              className="flex-1 min-h-[60px] resize-y" 
+                              className="w-full min-h-[60px] resize-y" 
                               placeholder="Data" 
                               value={newStep.data} 
                               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewStep(s => ({ ...s, data: e.target.value }))} 
                             />
                           </div>
-                          <div className="flex gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
-                            <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-1" />
-                            <label className="block text-sm font-semibold mb-0 w-32 flex-shrink-0">Expected Result</label>
+
+                          {/* Expected Result Field */}
+                          <div className="flex flex-col gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
+                            <div className="flex items-center gap-3">
+                              <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                              <label className="text-sm font-semibold mb-0">Expected Result</label>
+                            </div>
                             <Textarea 
-                              className="flex-1 min-h-[60px] resize-y" 
+                              className="w-full min-h-[60px] resize-y" 
                               placeholder="Expected Result" 
                               value={newStep.expected} 
                               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewStep(s => ({ ...s, expected: e.target.value }))} 
                             />
                           </div>
-                          <div className="flex gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
-                            <Code className="w-5 h-5 text-purple-500 flex-shrink-0 mt-1" />
-                            <label className="block text-sm font-semibold mb-0 w-32 flex-shrink-0">Playwright Script</label>
-                            <div className="flex-1">
+
+                          {/* Playwright Script Field */}
+                          <div className="flex flex-col gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
+                            <div className="flex items-center gap-3">
+                              <Code className="w-5 h-5 text-purple-500 flex-shrink-0" />
+                              <label className="text-sm font-semibold mb-0">Playwright Script</label>
                               <Button 
                                 type="button" 
                                 variant="ghost" 
                                 size="sm" 
                                 onClick={() => setShowPlaywrightScript(!showPlaywrightScript)}
-                                className="mb-2 p-1 h-auto text-xs"
+                                className="ml-auto p-1 h-auto text-xs"
                               >
                                 {showPlaywrightScript ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                               </Button>
-                              {showPlaywrightScript && (
-                                <Textarea 
-                                  className="w-full min-h-[80px] resize-y" 
-                                  placeholder="Playwright Script" 
-                                  value={newStep.playwright_script} 
-                                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewStep(s => ({ ...s, playwright_script: e.target.value }))} 
-                                />
-                              )}
                             </div>
+                            {showPlaywrightScript && (
+                              <Textarea 
+                                className="w-full min-h-[80px] resize-y" 
+                                placeholder="Playwright Script" 
+                                value={newStep.playwright_script} 
+                                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewStep(s => ({ ...s, playwright_script: e.target.value }))} 
+                              />
+                            )}
                           </div>
-                          <div className="flex gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
-                            <svg className="w-5 h-5 text-orange-500 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
-                            <label className="block text-sm font-semibold mb-0 w-32 flex-shrink-0">Call Fixture</label>
+
+                          {/* Call Fixture Field */}
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
+                            <div className="flex items-center gap-3 sm:w-32 flex-shrink-0">
+                              <svg className="w-5 h-5 text-orange-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                              </svg>
+                              <label className="text-sm font-semibold mb-0">Call Fixture</label>
+                            </div>
                             <select 
                               className="flex-1 p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                               value={newStep.referenced_fixture_id} 
@@ -1169,14 +1303,16 @@ export default function TestCaseDetailPage() {
                               ))}
                             </select>
                           </div>
-                          <div className="flex gap-4 items-center">
-                            <div className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800 w-1/2">
+
+                          {/* Order and Disabled Fields */}
+                          <div className="flex flex-col sm:flex-row gap-4">
+                            <div className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800 flex-1">
                               <ListOrdered className="w-5 h-5 text-blue-400 flex-shrink-0" />
-                              <label className="block text-sm font-semibold mb-0 w-16 flex-shrink-0">
+                              <label className="text-sm font-semibold mb-0 whitespace-nowrap">
                                 Order {!editMode && "(Auto)"}
                               </label>
                               <Input 
-                                className="flex-1" 
+                                className="flex-1 max-w-24" 
                                 type="number" 
                                 placeholder="Order" 
                                 value={newStep.order} 
@@ -1205,10 +1341,16 @@ export default function TestCaseDetailPage() {
                                 disabled={!editMode}
                               />
                             </div>
-                            <div className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800 h-full">
+                            <div className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
                               <Ban className="w-5 h-5 text-red-400 flex-shrink-0" />
-                              <input type="checkbox" id="step-disabled" checked={newStep.disabled} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewStep(s => ({ ...s, disabled: e.target.checked }))} className="mr-2" />
-                              <label htmlFor="step-disabled" className="text-sm font-semibold mb-0">Disabled</label>
+                              <input 
+                                type="checkbox" 
+                                id="step-disabled" 
+                                checked={newStep.disabled} 
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewStep(s => ({ ...s, disabled: e.target.checked }))} 
+                                className="mr-2" 
+                              />
+                              <label htmlFor="step-disabled" className="text-sm font-semibold mb-0 whitespace-nowrap">Disabled</label>
                             </div>
                           </div>
                         </div>
@@ -1607,6 +1749,454 @@ export default function TestCaseDetailPage() {
           </div>
         </div>
       </div>
+      
+      {/* Run Settings Dialog */}
+      <Dialog open={runSettingsOpen} onOpenChange={setRunSettingsOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Test Execution Settings</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Timeout (s)</label>
+                <Input
+                  type="number"
+                  value={runSettings.timeout}
+                  onChange={(e) => setRunSettings(s => ({ ...s, timeout: Number(e.target.value) }))}
+                  min={0}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Expect Timeout (s)</label>
+                <Input
+                  type="number"
+                  value={runSettings.expect_timeout}
+                  onChange={(e) => setRunSettings(s => ({ ...s, expect_timeout: Number(e.target.value) }))}
+                  min={0}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id="headless-toggle"
+                type="checkbox"
+                checked={runSettings.headless}
+                onChange={(e) => setRunSettings(s => ({ ...s, headless: e.target.checked }))}
+              />
+              <label htmlFor="headless-toggle" className="text-sm font-medium">Headless Mode</label>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Screenshot</label>
+                <select
+                  className="w-full p-2 border rounded-md bg-white dark:bg-gray-800"
+                  value={runSettings.screenshot}
+                  onChange={(e) => setRunSettings(s => ({ ...s, screenshot: e.target.value as any }))}
+                >
+                  <option value="off">Off</option>
+                  <option value="on">On</option>
+                  <option value="only-on-failure">Only on failure</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Video</label>
+                <select
+                  className="w-full p-2 border rounded-md bg-white dark:bg-gray-800"
+                  value={runSettings.video}
+                  onChange={(e) => setRunSettings(s => ({ ...s, video: e.target.value as any }))}
+                >
+                  <option value="off">Off</option>
+                  <option value="on">On</option>
+                  <option value="retain-on-failure">Retain on failure</option>
+                  <option value="on-first-retry">On first retry</option>
+                </select>
+              </div>
+            </div>
+            
+            {/* Browser Selection */}
+            <div className="space-y-3">
+              <label className="text-sm font-medium">Browser</label>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    id="browser-chromium"
+                    type="radio"
+                    name="browser"
+                    value="chromium"
+                    checked={runSettings.browser === 'chromium'}
+                    onChange={(e) => setRunSettings(s => ({ ...s, browser: 'chromium' }))}
+                  />
+                  <label htmlFor="browser-chromium" className="text-sm">Chrome</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="browser-firefox"
+                    type="radio"
+                    name="browser"
+                    value="firefox"
+                    checked={runSettings.browser === 'firefox'}
+                    onChange={(e) => setRunSettings(s => ({ ...s, browser: 'firefox' }))}
+                  />
+                  <label htmlFor="browser-firefox" className="text-sm">Firefox</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="browser-webkit"
+                    type="radio"
+                    name="browser"
+                    value="webkit"
+                    checked={runSettings.browser === 'webkit'}
+                    onChange={(e) => setRunSettings(s => ({ ...s, browser: 'webkit' }))}
+                  />
+                  <label htmlFor="browser-webkit" className="text-sm">Safari</label>
+                </div>
+              </div>
+            </div>
+            
+            {/* Execution Mode Options */}
+            <div className="space-y-3">
+              <label className="text-sm font-medium">Execution Mode</label>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    id="wait-for-result"
+                    type="radio"
+                    name="execution-mode"
+                    value="wait"
+                    checked={runSettings.executionMode === 'wait'}
+                    onChange={(e) => setRunSettings(s => ({ ...s, executionMode: 'wait' }))}
+                  />
+                  <label htmlFor="wait-for-result" className="text-sm">Wait for Result</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="background-run"
+                    type="radio"
+                    name="execution-mode"
+                    value="background"
+                    checked={runSettings.executionMode === 'background'}
+                    onChange={(e) => setRunSettings(s => ({ ...s, executionMode: 'background' }))}
+                  />
+                  <label htmlFor="background-run" className="text-sm">Background Run</label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRunSettingsOpen(false)}>Cancel</Button>
+            <Button onClick={handleRunTest} disabled={runningTest}>
+              {runningTest ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Running...
+                </>
+              ) : (
+                'Run'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Scheduling Message */}
+      {schedulingMessage && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-xl">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              <span className="text-lg font-medium">{schedulingMessage}</span>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Test Result Dialog */}
+      <Dialog open={testResultOpen} onOpenChange={setTestResultOpen}>
+        <DialogContent className="sm:max-w-4xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+                <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              Test Result
+            </DialogTitle>
+          </DialogHeader>
+          
+          {/* Tabs */}
+          <div className="border-b border-gray-200 dark:border-gray-700">
+            <nav className="flex space-x-8">
+              <button
+                onClick={() => setActiveResultTab('executions')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeResultTab === 'executions'
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                }`}
+              >
+                Test Case
+              </button>
+              <button
+                onClick={() => setActiveResultTab('logs')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeResultTab === 'logs'
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                }`}
+              >
+                Log Results
+              </button>
+            </nav>
+          </div>
+          
+          {/* Tab Content */}
+          <div className="mt-4">
+            {activeResultTab === 'executions' ? (
+              /* Tab 1: Test Case from Current Run */
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-medium">Test Case from Current Run</h3>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">
+                    {testResult ? `Execution ID: ${testResult.execution_id || 'N/A'}` : 'No execution data'}
+                  </div>
+                </div>
+                
+                {testResult ? (
+                  <div className="space-y-3">
+                    {/* Single test case result from current run */}
+                    <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-4 h-4 rounded-full ${
+                            testResult.status === 'passed' ? 'bg-green-500' : 'bg-red-500'
+                          }`}></div>
+                          <div>
+                            <div className="font-medium text-sm">
+                              {testCase?.name || 'Current Test Case'}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              Execution ID: {testResult.execution_id || 'N/A'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-medium">
+                            {testResult.duration ? `${(testResult.duration / 1000).toFixed(2)}s` : 'N/A'}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            Status: {testResult.status || 'N/A'}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Playwright test results summary */}
+                      {testResult.output && (
+                        <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                          <div className="text-xs font-medium text-gray-600 mb-2">Playwright Test Results:</div>
+                          <div className="grid grid-cols-4 gap-4 text-xs">
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Status:</span>
+                              <span className={`ml-2 px-2 py-1 rounded text-xs font-medium ${
+                                testResult.status === 'passed' 
+                                  ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' 
+                                  : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                              }`}>
+                                {testResult.status === 'passed' ? '✅ Passed' : '❌ Failed'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Browsers:</span>
+                              <span className="ml-2">
+                                {(() => {
+                                  try {
+                                    if (testResult.output) {
+                                      const outputData = JSON.parse(testResult.output);
+                                      if (outputData.config && outputData.config.projects) {
+                                        const actualProjects = outputData.config.projects.filter((p: any) => 
+                                          p.id === runSettings.browser || p.name === runSettings.browser
+                                        );
+                                        return `${actualProjects.length} (${actualProjects.map((p: any) => p.name).join(', ')})`;
+                                      }
+                                    }
+                                    return 'N/A';
+                                  } catch (e) {
+                                    return 'N/A';
+                                  }
+                                })()}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Total Tests:</span>
+                              <span className="ml-2">
+                                {(() => {
+                                  try {
+                                    if (testResult.output) {
+                                      const outputData = JSON.parse(testResult.output);
+                                      if (outputData.stats) {
+                                        const total = outputData.stats.expected || 0;
+                                        const passed = outputData.stats.expected - (outputData.stats.unexpected || 0);
+                                        return `${passed}/${total} passed`;
+                                      }
+                                    }
+                                    return 'N/A';
+                                  } catch (e) {
+                                    return 'N/A';
+                                  }
+                                })()}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Total Duration:</span>
+                              <span className="ml-2">
+                                {(() => {
+                                  try {
+                                    if (testResult.output) {
+                                      const outputData = JSON.parse(testResult.output);
+                                      if (outputData.stats && outputData.stats.duration) {
+                                        return `${(outputData.stats.duration / 1000).toFixed(1)}s`;
+                                      }
+                                    }
+                                    return 'N/A';
+                                  } catch (e) {
+                                    return 'N/A';
+                                  }
+                                })()}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                    <svg className="w-12 h-12 mx-auto mb-4 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    <p>No test execution data available</p>
+                    <p className="text-xs mt-1">Run a test first to see execution results</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Tab 2: Log Results */
+              <div className="space-y-4">
+                {testResult && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Status</label>
+                        <div className={`mt-1 px-3 py-2 rounded-md text-sm font-medium ${
+                          testResult.status === 'passed' 
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' 
+                            : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                        }`}>
+                          {testResult.status === 'passed' ? '✅ Passed' : '❌ Failed'}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Duration</label>
+                        <div className="mt-1 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-md text-sm">
+                          {testResult.duration ? `${(testResult.duration / 1000).toFixed(2)}s` : 'N/A'}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Execution ID</label>
+                        <div className="mt-1 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-md text-sm font-mono">
+                          {testResult.execution_id || 'N/A'}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Test Result ID</label>
+                        <div className="mt-1 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-md text-sm font-mono">
+                          {testResult.test_result_id || 'N/A'}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {testResult.output && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-sm font-medium text-gray-600">Output</label>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(testResult.output);
+                              // Show temporary success message
+                              const button = event?.target as HTMLButtonElement;
+                              if (button) {
+                                const originalText = button.innerHTML;
+                                button.innerHTML = '✓ Copied!';
+                                button.className = 'text-green-600 hover:text-green-700 text-xs font-medium px-2 py-1 rounded hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors';
+                                setTimeout(() => {
+                                  button.innerHTML = originalText;
+                                  button.className = 'text-gray-600 hover:text-gray-700 text-xs font-medium px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors';
+                                }, 2000);
+                              }
+                            }}
+                            className="text-gray-600 hover:text-gray-700 text-xs font-medium px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors flex items-center gap-1"
+                            title="Copy to clipboard"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                            Copy
+                          </button>
+                        </div>
+                        <div className="mt-1 p-3 bg-gray-100 dark:bg-gray-800 rounded-md text-sm font-mono max-h-64 overflow-y-auto">
+                          <pre className="whitespace-pre-wrap">{testResult.output}</pre>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {testResult.error && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-sm font-medium text-gray-600">Error</label>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(testResult.error);
+                              // Show temporary success message
+                              const button = event?.target as HTMLButtonElement;
+                              if (button) {
+                                const originalText = button.innerHTML;
+                                button.innerHTML = '✓ Copied!';
+                                button.className = 'text-green-600 hover:text-green-700 text-xs font-medium px-2 py-1 rounded hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors';
+                                setTimeout(() => {
+                                  button.innerHTML = originalText;
+                                  button.className = 'text-gray-600 hover:text-gray-700 text-xs font-medium px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors';
+                                }, 2000);
+                              }
+                            }}
+                            className="text-gray-600 hover:text-gray-700 text-xs font-medium px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors flex items-center gap-1"
+                            title="Copy to clipboard"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 00-2-2v-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                            Copy
+                          </button>
+                        </div>
+                        <div className="mt-1 p-3 bg-red-100 dark:bg-red-800 rounded-md text-sm font-mono max-h-64 overflow-y-auto">
+                          <pre className="whitespace-pre-wrap text-red-700 dark:text-red-300">{testResult.error}</pre>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button onClick={() => setTestResultOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       
       {/* Move Step Dialog */}
       <Dialog open={moveStepOpen} onOpenChange={setMoveStepOpen}>

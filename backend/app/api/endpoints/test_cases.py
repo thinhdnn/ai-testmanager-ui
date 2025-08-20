@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from uuid import UUID
@@ -71,11 +71,12 @@ def _create_version(db: Session, test_case, version: str = None):
 @router.post("/", response_model=TestCase, status_code=status.HTTP_201_CREATED)
 async def create_test_case(
     test_case: TestCaseCreate,
+    current_user: User = Depends(current_active_user),
     db: Session = Depends(get_db)
 ):
     """Create new test case with auto-versioning and auto-script generation"""
     # Create test case
-    db_test_case = await crud_test_case.create_test_case(db=db, test_case=test_case)
+    db_test_case = await crud_test_case.create_test_case(db=db, test_case=test_case, created_by=current_user.email)
     
     # Auto-create first version
     _create_version(db, db_test_case, "1.0.0")
@@ -132,6 +133,7 @@ async def update_test_case(
     test_case_id: str,
     test_case: TestCaseUpdate,
     auto_version: bool = Query(True, description="Auto-create version on update"),
+    current_user: User = Depends(current_active_user),
     db: Session = Depends(get_db)
 ):
     """Update test case with optional auto-versioning and auto-script regeneration"""
@@ -145,7 +147,7 @@ async def update_test_case(
         new_version = _create_version(db, db_test_case)
     
     # Update test case  
-    updated_test_case = await crud_test_case.update_test_case(db=db, test_case_id=test_case_id, test_case=test_case)
+    updated_test_case = await crud_test_case.update_test_case(db=db, test_case_id=test_case_id, test_case=test_case, updated_by=current_user.email)
     
     # Update version field if new version was created
     if new_version:
@@ -169,7 +171,7 @@ async def update_test_case(
 def update_test_case_status(
     test_case_id: str,
     status: str,
-    last_run_by: Optional[str] = None,
+    current_user: User = Depends(current_active_user),
     db: Session = Depends(get_db)
 ):
     """Update test case status"""
@@ -178,7 +180,7 @@ def update_test_case_status(
         raise HTTPException(status_code=404, detail="Test case not found")
     
     updated_test_case = crud_test_case.update_test_case_status(
-        db=db, test_case_id=test_case_id, status=status, last_run_by=last_run_by
+        db=db, test_case_id=test_case_id, status=status, last_run_by=current_user.email
     )
     
     return {"message": "Test case status updated", "status": status}
@@ -773,5 +775,176 @@ def bulk_generate_test_scripts(
         }
     }
 
+
+@router.post("/{test_case_id}/run", response_model=dict)
+async def run_test_case_locally(
+    test_case_id: str,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Run a Playwright test case locally"""
+    try:
+        # Parse request body
+        body = await request.json()
+        project_identifier = body.get("project_id") or body.get("project_name") or body.get("project_path")
+        test_file_path = body.get("test_file_path")
+        run_settings = body.get("settings") or {}
+        
+        if not project_identifier:
+            raise HTTPException(status_code=400, detail="Project identifier is required (id/name/path)")
+        if not test_file_path:
+            raise HTTPException(status_code=400, detail="Test file path is required")
+        
+        # Resolve Playwright project directory path
+        from ...models.project import Project
+        from pathlib import Path
+        from ...services.playwright_project import playwright_manager, clean_name as clean_project_folder_name
+        
+        project_dir_path: str | None = None
+        project = None
+        
+        # Try by exact stored path (preferred)
+        if isinstance(project_identifier, str) and project_identifier.startswith('/'):
+            project_dir_path = project_identifier
+        else:
+            # Try DB lookup by UUID or name
+            try:
+                # Try UUID lookup
+                project = db.query(Project).filter(Project.id == project_identifier).first()
+            except Exception:
+                project = None
+            if not project:
+                # Try by name
+                project = db.query(Project).filter(Project.name == project_identifier).first()
+            
+            if not project:
+                raise HTTPException(status_code=404, detail="Project not found")
+            
+            # If DB has stored path, use it
+            if project.playwright_project_path:
+                # Value is stored as folder name. Resolve via manager to absolute path.
+                folder_name = project.playwright_project_path
+                project_dir_path = str(playwright_manager.get_project_path(folder_name))
+            else:
+                # Build from cleaned name using manager base dir
+                cleaned_name = clean_project_folder_name(project.name)
+                project_dir_path = str(playwright_manager.get_project_path(cleaned_name))
+        # Ensure we have a project instance even if identifier was an absolute path
+        if project is None:
+            try:
+                folder_name_from_path = Path(project_dir_path).name if project_dir_path else None
+                if folder_name_from_path:
+                    project = db.query(Project).filter(Project.playwright_project_path == folder_name_from_path).first()
+            except Exception:
+                project = None
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found for provided identifier/path")
+
+        # Ensure test case exists (used for naming)
+        test_case_obj = crud_test_case.get_test_case(db, test_case_id)
+        if not test_case_obj:
+            raise HTTPException(status_code=404, detail="Test case not found")
+
+        # Import the playwright service here to avoid circular imports
+        from ...services.playwright_test_case import run_test_locally
+        
+        # Run the test locally with absolute project dir path
+        result = await run_test_locally(project_dir_path, test_file_path, test_case_id, settings=run_settings)
+        
+        if result.get('success'):
+            # Create test result history and execution records
+            from ...models.test_result import TestResultHistory, TestCaseExecution
+            
+            # Get current user from request headers
+            current_user_email = "system"
+            try:
+                auth_header = request.headers.get("authorization")
+                if auth_header and auth_header.startswith("Bearer "):
+                    token = auth_header.split(" ")[1]
+                    from ...auth import get_current_user_from_token
+                    current_user = get_current_user_from_token(token, db)
+                    if current_user:
+                        current_user_email = current_user.email
+            except:
+                pass
+            
+            # Convert duration from ms to seconds
+            raw_duration_ms = result.get('duration', 0) or 0
+            duration_seconds = int(float(raw_duration_ms) / 1000)
+
+            # Create TestResultHistory for this run
+            test_result_history = TestResultHistory(
+                project_id=project.id,
+                name=f"Run {test_case_obj.name}",
+                success=(result.get('status') == 'passed'),
+                status=result.get('status', 'completed'),
+                execution_time=duration_seconds,
+                output=result.get('output', ''),
+                error_message=result.get('error', ''),
+                created_by=current_user_email,
+                last_run_by=current_user_email
+            )
+            db.add(test_result_history)
+            db.commit()
+            db.refresh(test_result_history)
+            
+            # Create TestCaseExecution linked to this run
+            # Convert numeric timestamps to timezone-aware datetimes
+            from datetime import datetime, timezone
+            def _to_dt(value):
+                if value is None:
+                    return None
+                try:
+                    return datetime.fromtimestamp(float(value), tz=timezone.utc)
+                except Exception:
+                    try:
+                        # Handle ISO strings like 2025-01-01T00:00:00Z
+                        s = str(value).replace('Z', '+00:00')
+                        return datetime.fromisoformat(s)
+                    except Exception:
+                        return None
+            start_time_dt = _to_dt(result.get('start_time'))
+            end_time_dt = _to_dt(result.get('end_time'))
+
+            test_execution = TestCaseExecution(
+                test_result_id=test_result_history.id,
+                test_case_id=test_case_id,
+                status=result.get('status', 'completed'),
+                duration=duration_seconds,
+                error_message=result.get('error', ''),
+                output=result.get('output', ''),
+                start_time=start_time_dt,
+                end_time=end_time_dt,
+                retries=0
+            )
+            db.add(test_execution)
+            db.commit()
+            db.refresh(test_execution)
+            
+            return {
+                "success": True,
+                "message": "Test executed successfully",
+                "test_result_id": str(test_result_history.id),
+                "execution_id": str(test_execution.id),
+                "status": result.get('status'),
+                "duration": duration_seconds,
+                "output": result.get('output'),
+                "error": result.get('error')
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.get('error', 'Unknown error occurred'),
+                "output": result.get('output', '')
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error running test case {test_case_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to run test: {str(e)}"
+        )
 
  

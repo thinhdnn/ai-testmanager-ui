@@ -19,13 +19,15 @@ interface ProjectFormData {
   name: string
   description: string
   environment: string
+  base_url: string
 }
 
 export function CreateProjectModal({ open, onOpenChange, onProjectCreated }: CreateProjectModalProps) {
   const [formData, setFormData] = useState<ProjectFormData>({
     name: "",
     description: "",
-    environment: "development"
+    environment: "development",
+    base_url: ""
   })
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string>("")
@@ -46,6 +48,11 @@ export function CreateProjectModal({ open, onOpenChange, onProjectCreated }: Cre
       return
     }
 
+    if (!formData.base_url.trim()) {
+      setError("Base URL is required")
+      return
+    }
+
     setIsLoading(true)
     setError("")
 
@@ -59,6 +66,7 @@ export function CreateProjectModal({ open, onOpenChange, onProjectCreated }: Cre
           name: formData.name.trim(),
           description: formData.description.trim() || null,
           environment: formData.environment,
+          base_url: formData.base_url.trim() || null,
           created_by: user?.id
         })
       })
@@ -67,7 +75,8 @@ export function CreateProjectModal({ open, onOpenChange, onProjectCreated }: Cre
       setFormData({
         name: "",
         description: "",
-        environment: "development"
+        environment: "development",
+        base_url: ""
       })
       onOpenChange(false)
       onProjectCreated()
@@ -83,7 +92,8 @@ export function CreateProjectModal({ open, onOpenChange, onProjectCreated }: Cre
       setFormData({
         name: "",
         description: "",
-        environment: "development"
+        environment: "development",
+        base_url: ""
       })
       setError("")
       onOpenChange(false)
@@ -133,6 +143,21 @@ export function CreateProjectModal({ open, onOpenChange, onProjectCreated }: Cre
               onChange={(e) => handleInputChange("description", e.target.value)}
               placeholder="Brief description of your project"
               disabled={isLoading}
+              className="transition-all duration-200 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="base_url" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Base URL *
+            </Label>
+            <Input
+              id="base_url"
+              value={formData.base_url}
+              onChange={(e) => handleInputChange("base_url", e.target.value)}
+              placeholder="https://example.com"
+              disabled={isLoading}
+              required
               className="transition-all duration-200 focus:ring-2 focus:ring-blue-500"
             />
           </div>

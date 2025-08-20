@@ -197,7 +197,7 @@ async def create_sample_data():
         
         created_test_cases = []
         for test_case in test_cases:
-            db_test_case = crud_test_case.create_test_case(db, test_case)
+            db_test_case = await crud_test_case.create_test_case(db, test_case)
             created_test_cases.append(db_test_case)
             print(f"Created test case: {db_test_case.name}")
         

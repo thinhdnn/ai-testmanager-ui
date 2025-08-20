@@ -267,7 +267,7 @@ class PlaywrightProjectManager:
                     logger.info(f"Removed default folder: {folder_path}")
             
             # Create custom folders
-            folders_to_create = ['fixtures', 'tests']
+            folders_to_create = ['fixtures', 'tests', 'pages']
             for folder_name in folders_to_create:
                 folder_path = project_path / folder_name
                 folder_path.mkdir(exist_ok=True)
@@ -293,10 +293,91 @@ class PlaywrightProjectManager:
                 logger.warning(f"Failed to generate fixtures/index.ts: {index_result.get('error')}")
                 # Don't fail the entire setup if index.ts generation fails
             
+            # Create pages/AllPage.ts from template
+            pages_folder = project_path / 'pages'
+            try:
+                from .page_generator import PageGenerator
+                generator = PageGenerator(str(project_path))
+                
+                # Create empty AllPage.ts with just the template structure
+                template_path = Path(__file__).parent.parent.parent / "template" / "page.template"
+                if template_path.exists():
+                    with open(template_path, 'r', encoding='utf-8') as f:
+                        template_content = f.read()
+                    
+                    # Replace {{content}} with empty content for initial file
+                    initial_content = template_content.replace("{{content}}", "  // No pages created yet")
+                    
+                    allpage_path = pages_folder / "AllPage.ts"
+                    with open(allpage_path, 'w', encoding='utf-8') as f:
+                        f.write(initial_content)
+                    logger.info(f"Created pages/AllPage.ts: {allpage_path}")
+                else:
+                    logger.warning(f"Page template not found: {template_path}")
+            except Exception as e:
+                logger.warning(f"Failed to create pages/AllPage.ts: {str(e)}")
+                # Don't fail the entire setup if AllPage.ts generation fails
+            
             return True
             
         except Exception as e:
             logger.error(f"Error setting up custom project structure: {str(e)}")
+            return False
+
+    async def build_playwright_config(self, db_session, project_id: str, project_name: str) -> bool:
+        """
+        Build playwright.config.ts from template using project settings from database.
+        
+        Args:
+            db_session: Database session to query project settings
+            project_id: Project ID to get settings for
+            project_name: Name of the project (cleaned folder name)
+            
+        Returns:
+            True if config was built successfully, False otherwise
+        """
+        try:
+            # Import here to avoid circular imports
+            from ..models.project_setting import ProjectSetting
+            
+            # Get project settings from database
+            settings = db_session.query(ProjectSetting).filter(ProjectSetting.project_id == project_id).all()
+            settings_dict = {setting.key: setting.value for setting in settings}
+            
+            # Read the template file
+            template_path = Path(__file__).parent.parent.parent / "template" / "playwright.config.ts.template"
+            if not template_path.exists():
+                logger.error(f"Template file not found: {template_path}")
+                return False
+            
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template_content = f.read()
+            
+            # Replace template variables with project settings
+            config_content = template_content
+            for key, value in settings_dict.items():
+                placeholder = f"{{{{{key}}}}}"
+                config_content = config_content.replace(placeholder, str(value))
+            
+            # Write the generated config to the project directory
+            project_dir = self.base_projects_dir / project_name
+            config_file_path = project_dir / "playwright.config.ts"
+            
+            if config_file_path.exists():
+                # Backup existing file
+                backup_path = config_file_path.with_suffix('.ts.backup')
+                config_file_path.rename(backup_path)
+                logger.info(f"Backed up existing config to {backup_path}")
+            
+            # Write new config file
+            with open(config_file_path, 'w', encoding='utf-8') as f:
+                f.write(config_content)
+            
+            logger.info(f"Successfully generated playwright.config.ts for project '{project_name}'")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to build playwright config for project {project_id}: {str(e)}")
             return False
     
     async def create_playwright_project(
@@ -670,6 +751,21 @@ def get_config_info() -> dict:
         "default_path": "playwright_projects/ (relative to project root)",
         "note": "Restart required for environment variable changes to take effect in existing manager instance"
     }
+
+
+async def build_playwright_config_for_project(db_session, project_id: str, project_name: str) -> bool:
+    """
+    Convenience function to build playwright config for a project.
+    
+    Args:
+        db_session: Database session
+        project_id: Project ID
+        project_name: Project name (cleaned folder name)
+        
+    Returns:
+        bool: True if config was built successfully, False otherwise
+    """
+    return await playwright_manager.build_playwright_config(db_session, project_id, project_name)
 
 
 def create_fresh_manager() -> PlaywrightProjectManager:

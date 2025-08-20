@@ -107,6 +107,20 @@ def get_executions_by_test_case(db: Session, test_case_id: str, limit: int = 20)
     ).order_by(TestCaseExecution.created_at.desc()).limit(limit).all()
 
 
+def get_project_test_executions(db: Session, project_id: str, skip: int = 0, limit: int = 50) -> List[TestCaseExecution]:
+    """Get test case executions for a project"""
+    from sqlalchemy.orm import joinedload
+    
+    return db.query(TestCaseExecution).options(
+        joinedload(TestCaseExecution.test_result),
+        joinedload(TestCaseExecution.test_case)
+    ).join(
+        TestResultHistory, TestCaseExecution.test_result_id == TestResultHistory.id
+    ).filter(
+        TestResultHistory.project_id == project_id
+    ).order_by(TestCaseExecution.created_at.desc()).offset(skip).limit(limit).all()
+
+
 def create_test_case_execution(db: Session, execution: TestCaseExecutionCreate) -> TestCaseExecution:
     db_execution = TestCaseExecution(
         test_result_id=execution.test_result_id,

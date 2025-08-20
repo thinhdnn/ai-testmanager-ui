@@ -180,7 +180,7 @@ def create_project_setting(
         raise HTTPException(status_code=404, detail="Project not found")
     
     # Override project_id from URL
-    setting_data = setting.dict()
+    setting_data = setting.model_dump()
     setting_data['project_id'] = project_id
     
     new_setting = ProjectSettingCreate(**setting_data)
@@ -218,11 +218,11 @@ def get_project_setting_by_key(
 
 
 @router.put("/{project_id}/settings/{key}", response_model=ProjectSetting)
-def upsert_project_setting(
+async def upsert_project_setting(
     project_id: str,
     key: str,
     value: str,
-    updated_by: str = None,
+    current_user: User = Depends(current_active_user),
     db: Session = Depends(get_db)
 ):
     """Create or update a specific setting"""
@@ -231,12 +231,12 @@ def upsert_project_setting(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    setting = crud_setting.upsert_setting(
+    setting = await crud_setting.upsert_setting(
         db=db,
         project_id=project_id,
         key=key,
         value=value,
-        updated_by=updated_by
+        updated_by=str(current_user.id)
     )
     return setting
 
@@ -262,6 +262,30 @@ def delete_project_setting_by_key(
     
     crud_setting.delete_project_setting(db, setting_id=str(setting.id))
     return {"message": f"Setting '{key}' deleted successfully"}
+
+
+@router.post("/{project_id}/regenerate-config")
+async def regenerate_playwright_config(
+    project_id: str,
+    current_user: User = Depends(current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Manually regenerate playwright.config.ts for a project"""
+    # Check if project exists
+    project = crud_project.get_project(db, project_id=project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    try:
+        # Import the function from project_setting crud
+        from ...crud.project_setting import _regenerate_playwright_config
+        await _regenerate_playwright_config(db, project_id)
+        return {"message": "Playwright configuration regenerated successfully"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to regenerate configuration: {str(e)}"
+        )
 
 
 # ============ PROJECT RELEASES NESTED ROUTES ============
@@ -294,7 +318,7 @@ def create_project_release(
         raise HTTPException(status_code=404, detail="Project not found")
     
     # Override project_id from URL
-    release_data = release.dict()
+    release_data = release.model_dump()
     release_data['project_id'] = project_id
     
     new_release = ReleaseCreate(**release_data)
@@ -410,7 +434,7 @@ def add_test_case_to_release(
         raise HTTPException(status_code=404, detail="Release not found for this project")
     
     # Override release_id from URL
-    rtc_data = release_test_case.dict()
+    rtc_data = release_test_case.model_dump()
     rtc_data['release_id'] = release_id
     
     new_rtc = ReleaseTestCaseCreate(**rtc_data)

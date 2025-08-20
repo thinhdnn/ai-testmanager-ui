@@ -25,3 +25,4 @@ class Project(BaseModel):
     tags = relationship("Tag", back_populates="project", cascade="all, delete-orphan")
     sprints = relationship("Sprint", back_populates="project", cascade="all, delete-orphan")
     releases = relationship("Release", back_populates="project", cascade="all, delete-orphan") 
+    pages = relationship("Page", back_populates="project", cascade="all, delete-orphan")

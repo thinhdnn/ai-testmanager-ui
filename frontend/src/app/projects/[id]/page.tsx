@@ -13,9 +13,11 @@ import { TestCaseList } from "@/components/ui/test-case-list"
 import { TestExecutionList } from "@/components/ui/test-execution-list"
 import { FixtureList } from "@/components/ui/fixture-list"
 import { ReleaseList } from "@/components/ui/release-list"
+import { PageList } from "@/components/ui/page-list"
 import { Button } from "@/components/ui/button"
 import { CreateTestCaseModal } from "@/components/create-test-case-modal"
 import { CreateFixtureModal } from "@/components/create-fixture-modal"
+import { CreatePageModal } from "@/components/create-page-modal"
 import type { TestCase } from "@/lib/columns/test-case-columns"
 import type { Fixture } from "@/lib/columns/fixture-columns"
 import type { TestExecution } from "@/lib/columns/test-execution-columns"
@@ -41,9 +43,11 @@ export default function ProjectDetailPage() {
   const [executions, setExecutions] = useState<TestExecution[]>([])
   const [fixtures, setFixtures] = useState<Fixture[]>([])
   const [releases, setReleases] = useState<Release[]>([])
+  const [pages, setPages] = useState<{ id: string; name: string; author?: string; lastModified?: string }[]>([])
   const [activeTab, setActiveTab] = useState("test-cases")
   const [showCreateTestCaseModal, setShowCreateTestCaseModal] = useState(false)
   const [showCreateFixtureModal, setShowCreateFixtureModal] = useState(false)
+  const [showCreatePageModal, setShowCreatePageModal] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -53,11 +57,12 @@ export default function ProjectDetailPage() {
       apiClient(`/projects/${id}`),
       apiClient(`/test-results/projects/${id}/stats`),
       apiClient(`/test-cases/?project_id=${id}&skip=0&limit=100`),
-      apiClient(`/test-results/projects/${id}/results?limit=50`),
+      apiClient(`/test-results/projects/${id}/executions?limit=50`),
       apiClient(`/fixtures/?project_id=${id}`),
-      apiClient(`/projects/${id}/releases`)
+      apiClient(`/projects/${id}/releases`),
+      apiClient(`/pages/?project_id=${id}`)
     ])
-      .then(([project, stats, testCases, executions, fixtures, releases]) => {
+      .then(([project, stats, testCases, executions, fixtures, releases, pages]) => {
         if (!project) {
           notFound()
           return
@@ -75,16 +80,26 @@ export default function ProjectDetailPage() {
           tag: Array.isArray(tc.tags) ? tc.tags : (typeof tc.tags === 'string' ? tc.tags.split(',').map((tag: string) => tag.trim()) : []),
         })))
         
-        // Map backend test results to frontend executions format
-        setExecutions((executions as any[]).map(exec => ({
-          id: String(exec.id),
-          testCase: exec.name || "Unknown",
-          status: exec.success ? "passed" : "failed",
-          startTime: exec.created_at || "",
-          duration: exec.execution_time ? `${exec.execution_time}ms` : "0ms",
-          executor: exec.author_name || exec.created_by || "System",
-          environment: exec.browser || "Unknown",
-        })))
+        // Map backend test case executions to frontend executions format
+        setExecutions((executions as any[]).map(exec => {
+          // Handle cases where related data might not be loaded
+          const testCaseName = exec.test_case?.name || "Unknown Test Case"
+          const status = exec.status || "unknown"
+          const startTime = exec.start_time || exec.created_at || ""
+          const duration = exec.duration ? `${(exec.duration / 1000).toFixed(2)}s` : "0s"
+          const executor = exec.test_result?.created_by || "System"
+          const environment = exec.test_result?.browser || "Unknown"
+          
+          return {
+            id: String(exec.id),
+            testCase: testCaseName,
+            status: status,
+            startTime: startTime,
+            duration: duration,
+            executor: executor,
+            environment: environment,
+          }
+        }))
         
         // Map backend fixtures to frontend format
         setFixtures((fixtures as any[]).map(f => ({
@@ -105,6 +120,14 @@ export default function ProjectDetailPage() {
           status: r.status,
           date: r.created_at || "",
           author: r.author_name || r.created_by || "Unknown",
+        })))
+
+        // Map backend pages to frontend format (worklist)
+        setPages((pages as any[]).map(p => ({
+          id: String(p.id),
+          name: p.name,
+          lastModified: p.updated_at || p.created_at || new Date().toISOString(),
+          author: p.author_name || p.created_by || "Unknown",
         })))
       })
       .catch((err) => {
@@ -201,6 +224,22 @@ export default function ProjectDetailPage() {
       })
   }
 
+  const handlePageCreated = () => {
+    if (!id) return
+    apiClient(`/pages/?project_id=${id}`)
+      .then((pages) => {
+        setPages((pages as any[]).map(p => ({
+          id: String(p.id),
+          name: p.name,
+          lastModified: p.updated_at || p.created_at || new Date().toISOString(),
+          author: p.author_name || p.created_by || "Unknown",
+        })))
+      })
+      .catch((err) => {
+        console.error("Failed to refresh pages:", err)
+      })
+  }
+
   const getAddButtonText = (tab: string) => {
     switch (tab) {
       case "test-cases":
@@ -211,6 +250,8 @@ export default function ProjectDetailPage() {
         return "Add Execution"
       case "release":
         return "Add Release"
+      case "pages":
+        return "Add Page"
       default:
         return "Add New"
     }
@@ -226,6 +267,8 @@ export default function ProjectDetailPage() {
         return "execution"
       case "release":
         return "release"
+      case "pages":
+        return "page"
       default:
         return ""
     }
@@ -288,13 +331,21 @@ export default function ProjectDetailPage() {
             <TabsList className="bg-background border-b rounded-none p-0">
             <TabsTrigger value="test-cases" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3">Test Cases</TabsTrigger>
             <TabsTrigger value="fixtures" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3">Fixtures</TabsTrigger>
+            <TabsTrigger value="pages" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3">Pages</TabsTrigger>
             <TabsTrigger value="executions" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3">Executions</TabsTrigger>
             <TabsTrigger value="release" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3">Release</TabsTrigger>
             <TabsTrigger value="settings" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3">Settings</TabsTrigger>
           </TabsList>
             {activeTab !== "settings" && (
               <Button 
-                onClick={() => handleAddNew(getAddButtonType(activeTab))}
+                onClick={() => {
+                  const type = getAddButtonType(activeTab)
+                  if (type === 'page') {
+                    setShowCreatePageModal(true)
+                  } else {
+                    handleAddNew(type)
+                  }
+                }}
                 className="flex items-center gap-2"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -318,6 +369,13 @@ export default function ProjectDetailPage() {
               </CardContent>
             </Card>
           </TabsContent>
+          <TabsContent value="pages" className="space-y-4">
+            <Card>
+              <CardContent className="pt-6">
+                <PageList data={pages} />
+              </CardContent>
+            </Card>
+          </TabsContent>
           <TabsContent value="executions" className="space-y-4">
             <Card>
               <CardContent className="pt-6">
@@ -334,6 +392,12 @@ export default function ProjectDetailPage() {
           </TabsContent>
           <TabsContent value="settings" className="space-y-4">
             <Card>
+              <CardHeader>
+                <CardTitle>Project Settings</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Configure Playwright test settings for this project. Changes are automatically applied to the generated configuration files.
+                </p>
+              </CardHeader>
               <CardContent className="pt-6">
                 <ConfigurationForm />
               </CardContent>
@@ -358,6 +422,13 @@ export default function ProjectDetailPage() {
         // Debug log for modal render
         key={showCreateFixtureModal ? "fixture-open" : "fixture-closed"}
       />
+      <CreatePageModal
+        open={showCreatePageModal}
+        onOpenChange={setShowCreatePageModal}
+        onPageCreated={handlePageCreated}
+        projectId={id || ""}
+        key={showCreatePageModal ? "page-open" : "page-closed"}
+      />
     </AppLayout>
   )
 }
@@ -380,6 +451,7 @@ function ConfigurationForm() {
   const [loading, setLoading] = useState(true)
   const [screenshot, setScreenshot] = useState("off")
   const [video, setVideo] = useState("off")
+  const [regenerating, setRegenerating] = useState(false)
 
   // Load settings from backend on component mount
   useEffect(() => {
@@ -389,18 +461,18 @@ function ConfigurationForm() {
       try {
         const settings = await apiClient(`/projects/${projectId}/settings/dict`)
         
-        // Map backend settings to state
-        if (settings.timeout) setTimeoutValue(parseInt(settings.timeout))
-        if (settings.expect_timeout) setExpectTimeout(parseInt(settings.expect_timeout))
-        if (settings.retries) setRetries(parseInt(settings.retries))
-        if (settings.workers) setWorkers(parseInt(settings.workers))
-        if (settings.fully_parallel) setFullyParallel(settings.fully_parallel === 'true')
-        if (settings.base_url) setBaseUrl(settings.base_url)
-        if (settings.headless) setHeadless(settings.headless === 'true')
-        if (settings.viewport_width) setViewportWidth(parseInt(settings.viewport_width))
-        if (settings.viewport_height) setViewportHeight(parseInt(settings.viewport_height))
-        if (settings.screenshot) setScreenshot(settings.screenshot)
-        if (settings.video) setVideo(settings.video)
+        // Map backend settings to state (convert milliseconds to seconds)
+        if (settings.TIMEOUT) setTimeoutValue(Math.round(parseInt(settings.TIMEOUT) / 1000))
+        if (settings.EXPECT_TIMEOUT) setExpectTimeout(Math.round(parseInt(settings.EXPECT_TIMEOUT) / 1000))
+        if (settings.RETRIES) setRetries(parseInt(settings.RETRIES))
+        if (settings.WORKERS) setWorkers(parseInt(settings.WORKERS))
+        if (settings.FULLY_PARALLEL) setFullyParallel(settings.FULLY_PARALLEL === 'true')
+        if (settings.BASE_URL) setBaseUrl(settings.BASE_URL)
+        if (settings.HEADLESS_MODE) setHeadless(settings.HEADLESS_MODE === 'true')
+        if (settings.VIEWPORT_WIDTH) setViewportWidth(parseInt(settings.VIEWPORT_WIDTH))
+        if (settings.VIEWPORT_HEIGHT) setViewportHeight(parseInt(settings.VIEWPORT_HEIGHT))
+        if (settings.SCREENSHOT) setScreenshot(settings.SCREENSHOT)
+        if (settings.VIDEO) setVideo(settings.VIDEO)
       } catch (error) {
         console.error('Failed to load project settings:', error)
         // Use default values if loading fails
@@ -419,17 +491,17 @@ function ConfigurationForm() {
     try {
       // Save each setting to backend
       const settingsToSave = [
-        { key: 'timeout', value: timeoutValue.toString() },
-        { key: 'expect_timeout', value: expectTimeout.toString() },
-        { key: 'retries', value: retries.toString() },
-        { key: 'workers', value: workers.toString() },
-        { key: 'fully_parallel', value: fullyParallel.toString() },
-        { key: 'base_url', value: baseUrl },
-        { key: 'headless', value: headless.toString() },
-        { key: 'viewport_width', value: viewportWidth.toString() },
-        { key: 'viewport_height', value: viewportHeight.toString() },
-        { key: 'screenshot', value: screenshot },
-        { key: 'video', value: video },
+        { key: 'TIMEOUT', value: timeoutValue.toString() },
+        { key: 'EXPECT_TIMEOUT', value: expectTimeout.toString() },
+        { key: 'RETRIES', value: retries.toString() },
+        { key: 'WORKERS', value: workers.toString() },
+        { key: 'FULLY_PARALLEL', value: fullyParallel.toString() },
+        { key: 'BASE_URL', value: baseUrl },
+        { key: 'HEADLESS_MODE', value: headless.toString() },
+        { key: 'VIEWPORT_WIDTH', value: viewportWidth.toString() },
+        { key: 'VIEWPORT_HEIGHT', value: viewportHeight.toString() },
+        { key: 'SCREENSHOT', value: screenshot },
+        { key: 'VIDEO', value: video },
       ]
       
       // Update each setting via API
@@ -441,11 +513,33 @@ function ConfigurationForm() {
         )
       )
       
+      // Regenerate Playwright config after saving all settings
+      await apiClient(`/projects/${projectId}/regenerate-config`, {
+        method: 'POST',
+      })
+      
     setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (error) {
       console.error('Failed to save settings:', error)
       // Could show error message to user
+    }
+  }
+
+  async function handleRegenerateConfig() {
+    if (!projectId) return
+    
+    setRegenerating(true)
+    try {
+      await apiClient(`/projects/${projectId}/regenerate-config`, {
+        method: 'POST',
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to regenerate config:', error)
+    } finally {
+      setRegenerating(false)
     }
   }
 
@@ -457,22 +551,26 @@ function ConfigurationForm() {
     <form onSubmit={handleSubmit} className="w-full p-6 space-y-8">
       {/* Base URL */}
       <div>
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Project Configuration</h3>
         <label className="block text-sm font-semibold text-gray-600 mb-1">Base URL</label>
         <input
           type="text"
           className="w-full rounded-lg border px-3 py-2 focus:ring-2 focus:ring-primary focus:border-primary transition"
           value={baseUrl}
           onChange={e => setBaseUrl(e.target.value)}
+          placeholder="https://example.com"
         />
       </div>
       {/* Row 2: Timeout, Expect Timeout, Retries, Workers */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 gap-y-4">
+      <div>
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Test Execution Settings</h3>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 gap-y-4">
         <div>
-          <label className="block text-sm font-semibold text-gray-600 mb-1">Timeout (ms)</label>
+          <label className="block text-sm font-semibold text-gray-600 mb-1">Timeout (s)</label>
           <input type="number" className="w-full rounded-lg border h-10 px-3 py-2 text-base focus:ring-2 focus:ring-primary focus:border-primary transition" value={timeoutValue} onChange={e => setTimeoutValue(Number(e.target.value))} min={0} />
         </div>
         <div>
-          <label className="block text-sm font-semibold text-gray-600 mb-1">Expect Timeout (ms)</label>
+          <label className="block text-sm font-semibold text-gray-600 mb-1">Expect Timeout (s)</label>
           <input type="number" className="w-full rounded-lg border h-10 px-3 py-2 text-base focus:ring-2 focus:ring-primary focus:border-primary transition" value={expectTimeout} onChange={e => setExpectTimeout(Number(e.target.value))} min={0} />
         </div>
         <div>
@@ -483,20 +581,26 @@ function ConfigurationForm() {
           <label className="block text-sm font-semibold text-gray-600 mb-1">Workers</label>
           <input type="number" className="w-full rounded-lg border h-10 px-3 py-2 text-base focus:ring-2 focus:ring-primary focus:border-primary transition" value={workers} onChange={e => setWorkers(Number(e.target.value))} min={1} />
         </div>
+        </div>
       </div>
       {/* Row 3: Viewport Width, Viewport Height */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 gap-y-4">
+      <div>
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Viewport Settings</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 gap-y-4">
         <div>
           <label className="block text-sm font-semibold text-gray-600 mb-1">Viewport Width</label>
           <input type="number" className="w-full rounded-lg border h-10 px-3 py-2 text-base focus:ring-2 focus:ring-primary focus:border-primary transition" value={viewportWidth} onChange={e => setViewportWidth(Number(e.target.value))} min={0} />
         </div>
         <div>
-          <label className="block text-sm font-semibold text-gray-600 mb-1">Viewport Height</label>
+          <label className="block text-sm font-semibold text-gray-800 mb-1">Viewport Height</label>
           <input type="number" className="w-full rounded-lg border h-10 px-3 py-2 text-base focus:ring-2 focus:ring-primary focus:border-primary transition" value={viewportHeight} onChange={e => setViewportHeight(Number(e.target.value))} min={0} />
+        </div>
         </div>
       </div>
       {/* Row 4: Fully Parallel, Headless Mode, Screenshot, Video */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 gap-y-4 w-full">
+      <div>
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Test Behavior Settings</h3>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 gap-y-4 w-full">
         <div>
           <label className="block text-sm font-semibold text-gray-600 mb-1">Fully Parallel</label>
           <button type="button" aria-pressed={fullyParallel} onClick={() => setFullyParallel(v => !v)} className={`w-10 h-6 rounded-full transition-colors duration-200 ${fullyParallel ? 'bg-primary' : 'bg-gray-300'} relative focus:outline-none`}>
@@ -525,9 +629,23 @@ function ConfigurationForm() {
             <option value="retain-on-failure">Retain on failure</option>
           </select>
         </div>
+        </div>
       </div>
-      <button type="submit" className="w-full mt-8 px-6 py-2 bg-primary text-white rounded-lg font-semibold hover:bg-primary/90 transition">Save Configuration</button>
+      <div className="flex gap-4 mt-8">
+        <button type="submit" className="flex-1 px-6 py-2 bg-primary text-white rounded-lg font-semibold hover:bg-primary/90 transition">
+          Save Configuration
+        </button>
+        <button 
+          type="button" 
+          onClick={handleRegenerateConfig}
+          disabled={regenerating}
+          className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition disabled:opacity-50"
+        >
+          {regenerating ? 'Regenerating...' : 'Regenerate Config'}
+        </button>
+      </div>
       {saved && <div className="text-green-600 mt-2 text-center">Configuration saved!</div>}
+      {regenerating && <div className="text-blue-600 mt-2 text-center">Regenerating Playwright configuration...</div>}
     </form>
   )
 }

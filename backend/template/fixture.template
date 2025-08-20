@@ -1,6 +1,6 @@
 {{#if (eq type "extend")}}
 import { Page, expect, BrowserContext, Browser } from '@playwright/test';
-
+import { AllPage } from ../pages/AllPage;
 /**
  * {{name}} {{type}} fixture
  * {{#if description}}

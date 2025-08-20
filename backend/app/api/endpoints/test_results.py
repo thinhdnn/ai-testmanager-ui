@@ -50,6 +50,18 @@ def get_result_executions(
     return executions
 
 
+@router.get("/executions/{execution_id}", response_model=TestCaseExecution)
+def get_test_case_execution(
+    execution_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get a specific test case execution by ID"""
+    execution = crud_result.get_test_case_execution(db, execution_id=execution_id)
+    if execution is None:
+        raise HTTPException(status_code=404, detail="Test case execution not found")
+    return execution
+
+
 # ============ PROJECT TEST RESULTS ============
 
 @router.get("/projects/{project_id}/results", response_model=List[TestResultHistory])
@@ -84,6 +96,18 @@ def get_project_test_statistics(
     """Get test execution statistics for a project"""
     stats = crud_result.get_project_test_stats(db, project_id=project_id)
     return stats
+
+
+@router.get("/projects/{project_id}/executions", response_model=List[TestCaseExecution])
+def get_project_test_executions(
+    project_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db)
+):
+    """Get test case executions for a project"""
+    executions = crud_result.get_project_test_executions(db, project_id=project_id, skip=skip, limit=limit)
+    return executions
 
 
 # ============ TEST CASE EXECUTION HISTORY ============

@@ -37,7 +37,7 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
             onClick={() => onOpenChange(false)}
           />
           {/* Enhanced dialog content with animation - fixed width and layout */}
-          <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-[90vw] z-10 transform transition-all duration-300 ease-out animate-in fade-in zoom-in-95 m-4">
+          <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-2xl z-10 transform transition-all duration-300 ease-out animate-in fade-in zoom-in-95 m-4">
             {children}
           </div>
         </div>

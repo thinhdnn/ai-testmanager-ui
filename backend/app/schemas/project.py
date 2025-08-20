@@ -12,6 +12,7 @@ class ProjectBase(BaseModel):
 
 
 class ProjectCreate(ProjectBase):
+    base_url: Optional[str] = None
     created_by: Optional[str] = None
 
 

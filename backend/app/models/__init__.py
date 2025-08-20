@@ -11,6 +11,8 @@ from .versioning import TestCaseVersion, StepVersion, FixtureVersion
 from .tag import Tag
 from .sprint import Sprint, Release, ReleaseTestCase
 from .setting import Setting
+from .page import Page
+from .page_element import PageLocator
 
 __all__ = [
     "BaseModel",
@@ -35,4 +37,7 @@ __all__ = [
     "Release",
     "ReleaseTestCase",
     "Setting"
+    ,
+    "Page",
+    "PageLocator"
 ] 

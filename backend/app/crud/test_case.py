@@ -134,8 +134,11 @@ async def regenerate_test_case_script(db: Session, test_case_id: str, project_na
         return False
 
 
-async def create_test_case(db: Session, test_case: TestCaseCreate) -> TestCase:
-    db_test_case = TestCase(**test_case.dict())
+async def create_test_case(db: Session, test_case: TestCaseCreate, created_by: str = None) -> TestCase:
+    test_case_data = test_case.model_dump()
+    if created_by:
+        test_case_data['created_by'] = created_by
+    db_test_case = TestCase(**test_case_data)
     db.add(db_test_case)
     db.commit()
     db.refresh(db_test_case)
@@ -160,7 +163,7 @@ async def create_test_case(db: Session, test_case: TestCaseCreate) -> TestCase:
             
             if test_result.get('success'):
                 # Save test case file to project
-                save_result = await test_case_generator.save_test_case_to_project(
+                save_result = test_case_generator.save_test_case_to_project(
                     project_name=project_name,
                     test_result=test_result,
                     test_case_db=db_test_case
@@ -209,10 +212,14 @@ def get_test_cases_by_status(db: Session, status: str, skip: int = 0, limit: int
     return db.query(TestCase).filter(TestCase.status == status).offset(skip).limit(limit).all()
 
 
-async def update_test_case(db: Session, test_case_id: str, test_case: TestCaseUpdate) -> Optional[TestCase]:
+async def update_test_case(db: Session, test_case_id: str, test_case: TestCaseUpdate, updated_by: str = None) -> Optional[TestCase]:
     db_test_case = get_test_case(db, test_case_id)
     if db_test_case:
         update_data = test_case.dict(exclude_unset=True)
+        
+        # Add updated_by if provided
+        if updated_by:
+            update_data['updated_by'] = updated_by
         
         # Check if we need to regenerate test file (if certain fields changed)
         should_regenerate = any(field in update_data for field in ['name', 'description', 'playwright_script', 'is_manual'])
@@ -241,7 +248,7 @@ async def update_test_case(db: Session, test_case_id: str, test_case: TestCaseUp
                     
                     if test_result.get('success'):
                         # Save test case file to project
-                        save_result = await test_case_generator.save_test_case_to_project(
+                        save_result = test_case_generator.save_test_case_to_project(
                             project_name=project_name,
                             test_result=test_result,
                             test_case_db=db_test_case
@@ -271,6 +278,19 @@ async def update_test_case(db: Session, test_case_id: str, test_case: TestCaseUp
         db.commit()
         db.refresh(db_test_case)
     return db_test_case
+
+
+def update_test_case_status(db: Session, test_case_id: str, status: str, last_run_by: str = None) -> Optional[TestCase]:
+    """Update test case status and last_run_by fields"""
+    db_test_case = get_test_case(db, test_case_id)
+    if db_test_case:
+        db_test_case.status = status
+        if last_run_by:
+            db_test_case.last_run_by = last_run_by
+        db.commit()
+        db.refresh(db_test_case)
+        return db_test_case
+    return None
 
 
 def delete_test_case(db: Session, test_case_id: str) -> bool:

@@ -51,7 +51,7 @@ async def create_test_case_step(
     logger.info(f"  - current_user.id: {current_user.id}")
     
     # Override test_case_id from URL and set created_by
-    step_data = step.dict()
+    step_data = step.model_dump()
     step_data['test_case_id'] = test_case_id
     step_data['created_by'] = str(current_user.id)
     # Allow referenced_fixture_id to be set - test cases can have steps that reference fixtures
@@ -114,7 +114,7 @@ async def create_fixture_step(
     logger.warning(f"  - current_user.id: {current_user.id}")
     
     # Override referenced_fixture_id from URL and set created_by
-    step_data = step.dict()
+    step_data = step.model_dump()
     step_data['referenced_fixture_id'] = fixture_id
     step_data['test_case_id'] = None  # Ensure it's not for test case
     step_data['created_by'] = str(current_user.id)
@@ -157,7 +157,7 @@ def create_step(
     """Create new step"""
     try:
         # Set created_by from current user
-        step_data = step.dict()
+        step_data = step.model_dump()
         step_data['created_by'] = str(current_user.id)
         step_with_user = StepCreate(**step_data)
         

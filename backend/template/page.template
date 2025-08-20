@@ -1,0 +1,13 @@
+import { Page, expect } from '@playwright/test';
+
+/**
+ * All Page Objects
+ */
+export class AllPage {
+  constructor(public readonly page: Page) {}
+
+  // Locators (readonly)
+{{content}}
+}
+
+export { expect };

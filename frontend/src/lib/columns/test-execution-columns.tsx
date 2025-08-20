@@ -3,6 +3,7 @@
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import Link from "next/link"
 
 // Define the TestExecution type
 export type TestExecution = {
@@ -18,15 +19,32 @@ export type TestExecution = {
 // Create columns definition
 export const columns: ColumnDef<TestExecution>[] = [
   {
-    accessorKey: "testCase",
+    accessorKey: "id",
     header: ({ column }) => {
       return (
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         >
-          Name
+          Execution ID
         </Button>
+      )
+    },
+    cell: ({ row }) => {
+      const execution = row.original
+      const shortId = (id: string) => {
+        if (!id) return "";
+        return id.length > 13 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id
+      }
+      const url = `/executions/${execution.id}`
+      return (
+        <Link
+          href={url}
+          className="font-mono text-sm text-foreground no-underline hover:text-primary cursor-pointer"
+          title={execution.id}
+        >
+          {shortId(execution.id)}
+        </Link>
       )
     },
   },

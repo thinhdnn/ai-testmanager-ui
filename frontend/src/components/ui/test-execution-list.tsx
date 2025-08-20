@@ -21,18 +21,21 @@ export function TestExecutionList({ data }: TestExecutionListProps) {
   const executorOptions = Array.from(new Set(data.map(e => e.executor)))
 
   // Filtered data
-  const filtered = data.filter(e =>
-    (status ? e.status === status : true) &&
-    (executor ? e.executor === executor : true) &&
-    (search ? e.testCase.toLowerCase().includes(search.toLowerCase()) : true)
-  )
+  const filtered = data.filter(e => {
+    const matchesStatus = status ? e.status === status : true
+    const matchesExecutor = executor ? e.executor === executor : true
+    const matchesSearch = search
+      ? e.id.toLowerCase().includes(search.toLowerCase())
+      : true
+    return matchesStatus && matchesExecutor && matchesSearch
+  })
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2 pb-2 items-center">
         <Input
           className="max-w-xs h-9 border rounded px-2 py-1 text-sm"
-          placeholder="Search name..."
+          placeholder="Search execution id..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />

@@ -773,3 +773,186 @@ def list_test_scripts(project_name: str) -> List[Dict[str, Any]]:
         List of test script information dictionaries
     """
     return test_case_generator.list_project_test_cases(project_name)
+
+
+async def run_test_locally(
+    project_dir_path: str,
+    test_file_path: str,
+    test_case_id: str,
+    settings: Dict[str, Any] | None = None
+) -> Dict[str, Any]:
+    """
+    Run a Playwright test locally.
+    
+    Args:
+        project_dir_path: Absolute path to the Playwright project directory
+        test_file_path: Path to the test file relative to the project directory
+        test_case_id: Test case ID
+        
+    Returns:
+        Dictionary with execution results
+    """
+    import asyncio
+    import subprocess
+    import time
+    from pathlib import Path
+    
+    try:
+        # Resolve the project directory path
+        project_dir = Path(project_dir_path)
+        
+        if not project_dir.exists():
+            return {
+                "success": False,
+                "error": f"Project directory not found: {project_dir}"
+            }
+        
+        # Check if the test file exists
+        test_file_full_path = project_dir / test_file_path
+        if not test_file_full_path.exists():
+            return {
+                "success": False,
+                "error": f"Test file not found: {test_file_full_path}"
+            }
+        
+        # Check if Playwright is installed in the project
+        playwright_config_ts = project_dir / "playwright.config.ts"
+        playwright_config_js = project_dir / "playwright.config.js"
+        if not playwright_config_ts.exists() and not playwright_config_js.exists():
+            return {
+                "success": False,
+                "error": "Playwright configuration not found. Please ensure Playwright is properly set up in the project."
+            }
+        
+        # Check if node_modules exists (dependencies installed)
+        node_modules = project_dir / "node_modules"
+        if not node_modules.exists():
+            return {
+                "success": False,
+                "error": "Project dependencies not installed. Please run 'npm install' in the project directory."
+            }
+        
+        # Start timing
+        start_time = time.time()
+        
+        # Run the test using Playwright
+        try:
+            # Change to project directory
+            original_cwd = os.getcwd()
+            os.chdir(project_dir)
+            
+            # Run the specific test file
+            cmd = ["npx", "playwright", "test", test_file_path]
+
+            # Add CLI options based on settings
+            if settings:
+                browser = settings.get('browser')
+                if browser:
+                    cmd.append(f"--project={browser}")
+                    logger.info(f"Added browser project: --project={browser}")
+                else:
+                    logger.warning("No browser specified in settings")
+                
+                headless = settings.get('headless')
+                if headless is False:
+                    cmd.append("--headed")
+                timeout = settings.get('timeout')
+                if timeout is not None:
+                    # Convert seconds to milliseconds for Playwright CLI
+                    timeout_ms = int(timeout * 1000)
+                    cmd.append(f"--timeout={timeout_ms}")
+                retries = settings.get('retries')
+                if retries is not None:
+                    cmd.append(f"--retries={int(retries)}")
+                workers = settings.get('workers')
+                if workers is not None:
+                    cmd.append(f"--workers={int(workers)}")
+            
+            # Log final command
+            logger.info(f"Final Playwright command: {' '.join(cmd)}")
+
+            # Always use JSON reporter for structured output
+            cmd.append("--reporter=json")
+            
+            # Prepare environment overrides for per-run settings
+            env = os.environ.copy()
+            if settings:
+                if 'timeout' in settings and settings['timeout'] is not None:
+                    # Convert seconds to milliseconds for Playwright environment variable
+                    timeout_ms = int(settings['timeout'] * 1000)
+                    env['PW_TIMEOUT'] = str(timeout_ms)
+                if 'expect_timeout' in settings and settings['expect_timeout'] is not None:
+                    # Convert seconds to milliseconds for Playwright environment variable
+                    expect_timeout_ms = int(settings['expect_timeout'] * 1000)
+                    env['PW_EXPECT_TIMEOUT'] = str(expect_timeout_ms)
+                if 'headless' in settings and settings['headless'] is not None:
+                    env['PW_HEADLESS'] = 'true' if bool(settings['headless']) else 'false'
+                if 'screenshot' in settings and settings['screenshot']:
+                    env['PW_SCREENSHOT'] = str(settings['screenshot'])
+                if 'video' in settings and settings['video']:
+                    env['PW_VIDEO'] = str(settings['video'])
+
+            # Execute the command
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env
+            )
+            
+            stdout, stderr = await process.communicate()
+            
+            # Calculate duration
+            end_time = time.time()
+            duration = int((end_time - start_time) * 1000)  # Convert to milliseconds
+            
+            # Parse the output
+            output = stdout.decode('utf-8') if stdout else ""
+            error_output = stderr.decode('utf-8') if stderr else ""
+            
+            # Determine test status based on exit code
+            if process.returncode == 0:
+                status = "passed"
+                error = ""
+            else:
+                status = "failed"
+                error = error_output or "Test execution failed"
+            
+            # Combine outputs
+            full_output = f"STDOUT:\n{output}\n\nSTDERR:\n{error_output}" if error_output else output
+            
+            return {
+                "success": True,
+                "status": status,
+                "duration": duration,
+                "output": full_output,
+                "error": error,
+                "start_time": start_time,
+                "end_time": end_time,
+                "exit_code": process.returncode
+            }
+            
+        except Exception as e:
+            end_time = time.time()
+            duration = int((end_time - start_time) * 1000)
+            
+            return {
+                "success": False,
+                "status": "error",
+                "duration": duration,
+                "output": "",
+                "error": f"Failed to execute test: {str(e)}",
+                "start_time": start_time,
+                "end_time": end_time
+            }
+            
+        finally:
+            # Restore original working directory
+            os.chdir(original_cwd)
+            
+    except Exception as e:
+        logger.error(f"Error running test locally: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Failed to run test: {str(e)}"
+        }
