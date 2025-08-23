@@ -18,11 +18,13 @@ import { Button } from "@/components/ui/button"
 import { CreateTestCaseModal } from "@/components/create-test-case-modal"
 import { CreateFixtureModal } from "@/components/create-fixture-modal"
 import { CreatePageModal } from "@/components/create-page-modal"
+import { DeleteConfirmationModal } from "@/components/ui/delete-confirmation-modal"
 import type { TestCase } from "@/lib/columns/test-case-columns"
 import type { Fixture } from "@/lib/columns/fixture-columns"
 import type { TestExecution } from "@/lib/columns/test-execution-columns"
 import type { Release } from "@/lib/columns/release-columns"
 import { useAuth } from '@/contexts/AuthContext'
+import { Trash2 } from "lucide-react"
 
 // Define a type for the project object
 interface ProjectDetail {
@@ -48,6 +50,9 @@ export default function ProjectDetailPage() {
   const [showCreateTestCaseModal, setShowCreateTestCaseModal] = useState(false)
   const [showCreateFixtureModal, setShowCreateFixtureModal] = useState(false)
   const [showCreatePageModal, setShowCreatePageModal] = useState(false)
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const router = useRouter()
 
   useEffect(() => {
     if (!id) return
@@ -112,32 +117,31 @@ export default function ProjectDetailPage() {
           environment: "development" as const, // Backend doesn't have environment, default
         })))
         
-        // Map backend releases to frontend format  
+        // Map backend releases to frontend format
         setReleases((releases as any[]).map(r => ({
           id: String(r.id),
-          version: r.version,
           name: r.name,
-          status: r.status,
-          date: r.created_at || "",
+          version: r.version,
+          status: r.status || "active",
+          date: r.release_date || r.created_at || new Date().toISOString(),
           author: r.author_name || r.created_by || "Unknown",
         })))
-
-        // Map backend pages to frontend format (worklist)
+        
+        // Map backend pages to frontend format
         setPages((pages as any[]).map(p => ({
           id: String(p.id),
           name: p.name,
           lastModified: p.updated_at || p.created_at || new Date().toISOString(),
           author: p.author_name || p.created_by || "Unknown",
         })))
+        
+        setLoading(false)
       })
       .catch((err) => {
-        if (err.message?.includes("404")) {
-          notFound()
-          return
-        }
-        setError(err.message || "Failed to load project data.")
+        console.error("Failed to load project data:", err)
+        setError("Failed to load project data")
+        setLoading(false)
       })
-      .finally(() => setLoading(false))
   }, [id])
 
   if (loading) {
@@ -240,6 +244,22 @@ export default function ProjectDetailPage() {
       })
   }
 
+  const handleDeleteProject = async () => {
+    if (!id) return
+    
+    setIsDeleting(true)
+    try {
+      await apiClient(`/projects/${id}`, { method: 'DELETE' })
+      // Redirect to projects list after successful deletion
+      router.push('/projects')
+    } catch (err) {
+      console.error('Failed to delete project:', err)
+      // You might want to show a toast notification here
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   const getAddButtonText = (tab: string) => {
     switch (tab) {
       case "test-cases":
@@ -285,9 +305,20 @@ export default function ProjectDetailPage() {
                 <CardTitle className="text-2xl">{project.name}</CardTitle>
                 <p className="text-muted-foreground">{project.description}</p>
               </div>
-              <Badge className={getStatusColor("active")} variant="secondary">
-                Active
-              </Badge>
+              <div className="flex items-center gap-3">
+                <Badge className={getStatusColor("active")} variant="secondary">
+                  Active
+                </Badge>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setShowDeleteConfirmation(true)}
+                  className="flex items-center gap-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete Project
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -428,6 +459,14 @@ export default function ProjectDetailPage() {
         onPageCreated={handlePageCreated}
         projectId={id || ""}
         key={showCreatePageModal ? "page-open" : "page-closed"}
+      />
+      <DeleteConfirmationModal
+        open={showDeleteConfirmation}
+        onOpenChange={setShowDeleteConfirmation}
+        onConfirm={handleDeleteProject}
+        title="Delete Project"
+        description={`Are you sure you want to delete the project "${project?.name}"? This action cannot be undone and will permanently remove the project and all its associated data.`}
+        isLoading={isDeleting}
       />
     </AppLayout>
   )

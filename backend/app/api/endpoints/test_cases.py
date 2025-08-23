@@ -948,3 +948,415 @@ async def run_test_case_locally(
         )
 
  
+@router.post("/run-multiple", response_model=dict)
+async def run_multiple_test_cases(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Run multiple test cases at once"""
+    try:
+        body = await request.json()
+        test_case_ids = body.get("test_case_ids", [])
+        project_identifier = body.get("project_id") or body.get("project_name") or body.get("project_path")
+        run_settings = body.get("settings") or {}
+        parallel = body.get("parallel", False)
+        max_workers = body.get("max_workers", 3)
+        
+        if not test_case_ids:
+            raise HTTPException(status_code=400, detail="test_case_ids is required")
+        if not project_identifier:
+            raise HTTPException(status_code=400, detail="Project identifier is required")
+        
+        # Resolve project directory path
+        from ...models.project import Project
+        from pathlib import Path
+        from ...services.playwright_project import playwright_manager, clean_name as clean_project_folder_name
+        
+        project_dir_path: str | None = None
+        project = None
+        
+        # Try by exact stored path (preferred)
+        if isinstance(project_identifier, str) and project_identifier.startswith('/'):
+            project_dir_path = project_identifier
+        else:
+            # Try DB lookup by UUID or name
+            try:
+                project = db.query(Project).filter(Project.id == project_identifier).first()
+            except Exception:
+                project = None
+            if not project:
+                project = db.query(Project).filter(Project.name == project_identifier).first()
+            
+            if not project:
+                raise HTTPException(status_code=404, detail="Project not found")
+            
+            if project.playwright_project_path:
+                folder_name = project.playwright_project_path
+                project_dir_path = str(playwright_manager.get_project_path(folder_name))
+            else:
+                cleaned_name = clean_project_folder_name(project.name)
+                project_dir_path = str(playwright_manager.get_project_path(cleaned_name))
+        
+        # Get test cases
+        test_cases = []
+        for test_case_id in test_case_ids:
+            test_case = crud_test_case.get_test_case(db, test_case_id)
+            if test_case:
+                test_cases.append(test_case)
+        
+        if not test_cases:
+            raise HTTPException(status_code=404, detail="No valid test cases found")
+        
+        # Run tests
+        results = []
+        errors = []
+        
+        if parallel:
+            # Run tests in parallel using asyncio
+            import asyncio
+            from ...services.playwright_test_case import run_test_locally
+            
+            async def run_single_test(test_case):
+                try:
+                    test_file_path = test_case.test_file_path
+                    if not test_file_path:
+                        return {
+                            "test_case_id": str(test_case.id),
+                            "success": False,
+                            "error": "No test file path found"
+                        }
+                    
+                    result = await run_test_locally(
+                        project_dir_path, 
+                        test_file_path, 
+                        str(test_case.id), 
+                        settings=run_settings
+                    )
+                    
+                    # Create test result records
+                    if result.get('success'):
+                        await _create_test_result_records(db, project.id, test_case, result, request)
+                    
+                    return {
+                        "test_case_id": str(test_case.id),
+                        "test_case_name": test_case.name,
+                        **result
+                    }
+                except Exception as e:
+                    return {
+                        "test_case_id": str(test_case.id),
+                        "test_case_name": test_case.name,
+                        "success": False,
+                        "error": str(e)
+                    }
+            
+            # Run with limited concurrency
+            semaphore = asyncio.Semaphore(max_workers)
+            async def run_with_semaphore(test_case):
+                async with semaphore:
+                    return await run_single_test(test_case)
+            
+            tasks = [run_with_semaphore(test_case) for test_case in test_cases]
+            results = await asyncio.gather(*tasks)
+            
+        else:
+            # Run tests sequentially
+            from ...services.playwright_test_case import run_test_locally
+            
+            for test_case in test_cases:
+                try:
+                    test_file_path = test_case.test_file_path
+                    if not test_file_path:
+                        errors.append({
+                            "test_case_id": str(test_case.id),
+                            "test_case_name": test_case.name,
+                            "error": "No test file path found"
+                        })
+                        continue
+                    
+                    result = await run_test_locally(
+                        project_dir_path, 
+                        test_file_path, 
+                        str(test_case.id), 
+                        settings=run_settings
+                    )
+                    
+                    # Create test result records
+                    if result.get('success'):
+                        await _create_test_result_records(db, project.id, test_case, result, request)
+                    
+                    results.append({
+                        "test_case_id": str(test_case.id),
+                        "test_case_name": test_case.name,
+                        **result
+                    })
+                    
+                except Exception as e:
+                    errors.append({
+                        "test_case_id": str(test_case.id),
+                        "test_case_name": test_case.name,
+                        "error": str(e)
+                    })
+        
+        # Calculate summary
+        successful = len([r for r in results if r.get('success')])
+        failed = len(results) - successful + len(errors)
+        
+        return {
+            "success": True,
+            "summary": {
+                "total": len(test_case_ids),
+                "successful": successful,
+                "failed": failed,
+                "errors": len(errors)
+            },
+            "results": results,
+            "errors": errors,
+            "project_name": project.name if project else "Unknown"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error running multiple test cases: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to run multiple test cases: {str(e)}"
+        )
+
+
+@router.post("/run-by-tags", response_model=dict)
+async def run_test_cases_by_tags(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Run test cases by tags"""
+    try:
+        body = await request.json()
+        tags = body.get("tags", [])
+        project_identifier = body.get("project_id") or body.get("project_name") or body.get("project_path")
+        run_settings = body.get("settings") or {}
+        include_all_tags = body.get("include_all_tags", False)  # True: AND logic, False: OR logic
+        
+        if not tags:
+            raise HTTPException(status_code=400, detail="tags is required")
+        if not project_identifier:
+            raise HTTPException(status_code=400, detail="Project identifier is required")
+        
+        # Find test cases by tags
+        test_cases = []
+        for tag in tags:
+            # Search test cases that contain this tag
+            tag_filter = f"%{tag}%"
+            if include_all_tags:
+                # AND logic: test case must contain ALL tags
+                if not test_cases:
+                    test_cases = db.query(TestCase).filter(
+                        TestCase.tags.like(tag_filter)
+                    ).all()
+                else:
+                    # Filter existing results to only include test cases with this tag
+                    test_cases = [tc for tc in test_cases if tag in (tc.tags or "")]
+            else:
+                # OR logic: test case contains ANY of the tags
+                found_cases = db.query(TestCase).filter(
+                    TestCase.tags.like(tag_filter)
+                ).all()
+                for found_case in found_cases:
+                    if found_case not in test_cases:
+                        test_cases.append(found_case)
+        
+        if not test_cases:
+            return {
+                "success": True,
+                "message": f"No test cases found with tags: {tags}",
+                "summary": {
+                    "total": 0,
+                    "successful": 0,
+                    "failed": 0
+                },
+                "results": [],
+                "errors": []
+            }
+        
+        # Get test case IDs and run them
+        test_case_ids = [str(tc.id) for tc in test_cases]
+        
+        # Create request body for run_multiple endpoint
+        run_request = Request(
+            scope={
+                "type": "http",
+                "method": "POST",
+                "path": "/test-cases/run-multiple"
+            }
+        )
+        
+        # Call run_multiple endpoint logic
+        from .test_cases import run_multiple_test_cases
+        return await run_multiple_test_cases(run_request, db)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error running test cases by tags: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to run test cases by tags: {str(e)}"
+        )
+
+
+@router.post("/projects/{project_id}/run-filtered", response_model=dict)
+async def run_project_test_cases_filtered(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Run test cases in a project with filters"""
+    try:
+        body = await request.json()
+        filters = body.get("filters", {})
+        run_settings = body.get("settings") or {}
+        parallel = body.get("parallel", False)
+        max_workers = body.get("max_workers", 3)
+        
+        # Build query based on filters
+        query = db.query(TestCase).filter(TestCase.project_id == project_id)
+        
+        # Apply filters
+        if filters.get("status"):
+            query = query.filter(TestCase.status == filters["status"])
+        
+        if filters.get("tags"):
+            tags = filters["tags"]
+            if isinstance(tags, list):
+                for tag in tags:
+                    query = query.filter(TestCase.tags.like(f"%{tag}%"))
+            else:
+                query = query.filter(TestCase.tags.like(f"%{tags}%"))
+        
+        if filters.get("is_manual") is not None:
+            query = query.filter(TestCase.is_manual == filters["is_manual"])
+        
+        if filters.get("created_by"):
+            query = query.filter(TestCase.created_by == filters["created_by"])
+        
+        if filters.get("version"):
+            query = query.filter(TestCase.version == filters["version"])
+        
+        # Get filtered test cases
+        test_cases = query.all()
+        
+        if not test_cases:
+            return {
+                "success": True,
+                "message": "No test cases found with the specified filters",
+                "summary": {
+                    "total": 0,
+                    "successful": 0,
+                    "failed": 0
+                },
+                "results": [],
+                "errors": []
+            }
+        
+        # Get test case IDs and run them
+        test_case_ids = [str(tc.id) for tc in test_cases]
+        
+        # Create request body for run_multiple endpoint
+        run_request = Request(
+            scope={
+                "type": "http",
+                "method": "POST",
+                "path": "/test-cases/run-multiple"
+            }
+        )
+        
+        # Call run_multiple endpoint logic
+        from .test_cases import run_multiple_test_cases
+        return await run_multiple_test_cases(run_request, db)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error running filtered test cases: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to run filtered test cases: {str(e)}"
+        )
+
+
+async def _create_test_result_records(db: Session, project_id: str, test_case: TestCase, result: dict, request: Request):
+    """Helper function to create test result records"""
+    try:
+        from ...models.test_result import TestResultHistory, TestCaseExecution
+        
+        # Get current user from request headers
+        current_user_email = "system"
+        try:
+            auth_header = request.headers.get("authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header.split(" ")[1]
+                from ...auth import get_current_user_from_token
+                current_user = get_current_user_from_token(token, db)
+                if current_user:
+                    current_user_email = current_user.email
+        except:
+            pass
+        
+        # Convert duration from ms to seconds
+        raw_duration_ms = result.get('duration', 0) or 0
+        duration_seconds = int(float(raw_duration_ms) / 1000)
+
+        # Create TestResultHistory for this run
+        test_result_history = TestResultHistory(
+            project_id=project_id,
+            name=f"Run {test_case.name}",
+            success=(result.get('status') == 'passed'),
+            status=result.get('status', 'completed'),
+            execution_time=duration_seconds,
+            output=result.get('output', ''),
+            error_message=result.get('error', ''),
+            created_by=current_user_email,
+            last_run_by=current_user_email
+        )
+        db.add(test_result_history)
+        db.commit()
+        db.refresh(test_result_history)
+        
+        # Create TestCaseExecution linked to this run
+        from datetime import datetime, timezone
+        def _to_dt(value):
+            if value is None:
+                return None
+            try:
+                return datetime.fromtimestamp(float(value), tz=timezone.utc)
+            except Exception:
+                try:
+                    s = str(value).replace('Z', '+00:00')
+                    return datetime.fromisoformat(s)
+                except Exception:
+                    return None
+        
+        start_time_dt = _to_dt(result.get('start_time'))
+        end_time_dt = _to_dt(result.get('end_time'))
+
+        test_execution = TestCaseExecution(
+            test_result_id=test_result_history.id,
+            test_case_id=str(test_case.id),
+            status=result.get('status', 'completed'),
+            duration=duration_seconds,
+            error_message=result.get('error', ''),
+            output=result.get('output', ''),
+            start_time=start_time_dt,
+            end_time=end_time_dt,
+            retries=0
+        )
+        db.add(test_execution)
+        db.commit()
+        
+    except Exception as e:
+        logger.error(f"Error creating test result records: {str(e)}")
+        # Don't fail the test execution if record creation fails
+        pass
+
+ 

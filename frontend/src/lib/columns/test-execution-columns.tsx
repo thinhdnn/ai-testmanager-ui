@@ -5,6 +5,21 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 
+// Simple friendly date formatter: shows relative time for <24h, else local date/time
+const formatFriendlyDate = (isoString: string) => {
+  if (!isoString) return "-"
+  const date = new Date(isoString)
+  if (isNaN(date.getTime())) return "-"
+  const now = new Date()
+  const diffSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
+  if (diffSeconds < 60) return `${diffSeconds}s ago`
+  const diffMinutes = Math.floor(diffSeconds / 60)
+  if (diffMinutes < 60) return `${diffMinutes}m ago`
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) return `${diffHours}h ago`
+  return date.toLocaleString()
+}
+
 // Define the TestExecution type
 export type TestExecution = {
   id: string
@@ -93,6 +108,16 @@ export const columns: ColumnDef<TestExecution>[] = [
         >
           Start Time
         </Button>
+      )
+    },
+    cell: ({ row }) => {
+      const iso = row.getValue("startTime") as string
+      const friendly = formatFriendlyDate(iso)
+      const title = iso ? new Date(iso).toLocaleString() : ""
+      return (
+        <span title={title} className="text-foreground">
+          {friendly}
+        </span>
       )
     },
   },
