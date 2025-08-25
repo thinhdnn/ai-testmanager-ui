@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
@@ -34,6 +32,16 @@ services:
       - testmanager_network
     depends_on:
       - postgres
+
+  mcp_playwright:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp-playwright
+    image: mcp-playwright:latest
+    stdin_open: true
+    tty: false
+    networks:
+      - testmanager_network
 
 networks:
   testmanager_network:
