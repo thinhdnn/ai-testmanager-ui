@@ -18,3 +18,4 @@ dist
 frontend/.env.local
 .DS_Store
 /playwright_projects
+/backend/cloudbeaver/workspace/.metadata

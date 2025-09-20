@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, Request, HTTPException
+from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 from fastapi.responses import JSONResponse
@@ -25,15 +26,20 @@ app = FastAPI(
     redirect_slashes=False
 )
 
-@app.on_event("startup")
-async def startup_event():
-    """Create database tables on startup"""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan context: setup and teardown."""
     try:
         Base.metadata.create_all(bind=get_engine())
         logger.info("Database tables created successfully")
     except Exception as e:
         logger.error(f"Failed to create database tables: {e}")
-        # Don't fail startup if database is not available
+        # Do not crash app if DB is unavailable at startup
+    yield
+    # No teardown actions needed currently
+
+# Attach lifespan handler
+app.router.lifespan_context = lifespan
 
 # Add CORS middleware
 app.add_middleware(

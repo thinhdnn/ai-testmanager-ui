@@ -31,6 +31,7 @@ import shutil
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
 import logging
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -170,19 +171,25 @@ class FixtureIndexGenerator:
 class PlaywrightProjectManager:
     """Manager class for creating and managing Playwright projects."""
     
-    def __init__(self, base_projects_dir: str = None):
+    def __init__(self, base_projects_dir: Optional[str] = None):
         """
-        Initialize the Playwright project manager.
+        Initialize the PlaywrightProjectManager.
         
         Args:
-            base_projects_dir: Base directory for Playwright projects.
-                              If None, will use environment variable PLAYWRIGHT_PROJECTS_PATH
+            base_projects_dir: Base directory for Playwright projects. If None, will check
+                              environment variable PLAYWRIGHT_PROJECTS_PATH first, then
                               or default to "playwright_projects"
         """
         # Determine the base directory path
         if base_projects_dir is None:
-            # Check environment variable first
-            env_path = os.getenv('PLAYWRIGHT_PROJECTS_PATH')
+            # Check centralized config first, then environment variable for backward compatibility
+            config_path = settings.playwright_projects_path
+            if config_path:
+                env_path = config_path
+            else:
+                # Fallback to environment variable (for backward compatibility)
+                env_path = os.getenv('PLAYWRIGHT_PROJECTS_PATH')
+                
             if env_path:
                 # Handle paths starting with ~ (home directory)
                 if env_path.startswith('~'):
@@ -722,7 +729,12 @@ def get_config_info() -> dict:
     Returns:
         Dictionary with configuration details
     """
-    env_path = os.getenv('PLAYWRIGHT_PROJECTS_PATH')
+    # Check centralized config first, then environment variable for backward compatibility
+    config_path = settings.playwright_projects_path
+    if config_path:
+        env_path = config_path
+    else:
+        env_path = os.getenv('PLAYWRIGHT_PROJECTS_PATH')
     
     # Calculate what the path would be with current environment
     if env_path:
@@ -745,6 +757,7 @@ def get_config_info() -> dict:
     return {
         "environment_variable": env_path,
         "using_env_var": bool(env_path),
+        "using_centralized_config": bool(config_path),
         "current_manager_path": str(playwright_manager.base_projects_dir.absolute()),
         "calculated_path_from_env": str(calculated_path.absolute()),
         "path_exists": calculated_path.exists(),

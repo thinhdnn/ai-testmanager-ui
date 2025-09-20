@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from pydantic.config import ConfigDict
 from typing import Optional
 from uuid import UUID
 
@@ -8,5 +9,5 @@ class Tag(BaseModel):
     label: Optional[str]
     project_id: Optional[UUID]
 
-    class Config:
-        orm_mode = True 
+    # Pydantic v2: allow loading from ORM objects
+    model_config = ConfigDict(from_attributes=True)
