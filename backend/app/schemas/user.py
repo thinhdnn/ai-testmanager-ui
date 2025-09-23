@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from datetime import datetime
 from fastapi_users import schemas
 from uuid import UUID
@@ -10,8 +10,7 @@ class UserRead(schemas.BaseUser):
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserCreate(schemas.BaseUserCreate):

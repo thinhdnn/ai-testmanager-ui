@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
@@ -43,8 +43,7 @@ class TestResultHistoryInDB(TestResultHistoryBase):
     created_by: Optional[str] = None
     last_run_by: Optional[str] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TestResultHistory(TestResultHistoryInDB):
@@ -82,8 +81,7 @@ class TestCaseExecutionInDB(TestCaseExecutionBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TestCaseExecution(TestCaseExecutionInDB):

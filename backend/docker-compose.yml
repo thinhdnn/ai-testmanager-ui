@@ -33,13 +33,12 @@ services:
     depends_on:
       - postgres
 
-  mcp_playwright:
-    build:
-      context: .
-      dockerfile: Dockerfile.mcp-playwright
-    image: mcp-playwright:latest
-    stdin_open: true
-    tty: false
+  executeautomation_playwright:
+    image: 40902624/executeautomation-mcp-playwright-sse-streamable:latest
+    container_name: executeautomation_mcp_playwright_sse_streamable
+    restart: always
+    ports:
+      - "9300:9300"
     networks:
       - testmanager_network
 

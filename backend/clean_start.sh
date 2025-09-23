@@ -40,7 +40,7 @@ fi
 
 # Start database and cloudbeaver fresh
 echo "🐘 Starting fresh PostgreSQL and CloudBeaver..."
-docker-compose up -d postgres cloudbeaver
+docker-compose up -d postgres cloudbeaver executeautomation_playwright
 
 # Wait longer for database
 echo "⏳ Waiting for database (30 seconds)..."
@@ -76,6 +76,8 @@ fi
 
 echo "📥 Installing backend dependencies with uv..."
 uv pip install -r requirements.txt || { echo "❌ Failed to install requirements with uv"; exit 1; }
+
+# Note: .env file will be loaded automatically by Python code
 
 # Create tables
 echo "🏗️  Creating tables from models..."

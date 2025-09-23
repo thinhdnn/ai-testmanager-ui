@@ -1,5 +1,5 @@
 from typing import Optional, Union, List
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, ConfigDict
 from datetime import datetime
 from uuid import UUID
 
@@ -35,8 +35,7 @@ class Page(PageBase):
     def convert_id_to_str(cls, v):
         return str(v) if isinstance(v, UUID) else v
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PageLocatorBase(BaseModel):
@@ -71,7 +70,6 @@ class PageLocator(PageLocatorBase):
     def convert_id_to_str_locator(cls, v):
         return str(v) if isinstance(v, UUID) else v
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 

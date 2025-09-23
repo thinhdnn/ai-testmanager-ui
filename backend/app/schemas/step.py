@@ -1,4 +1,4 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator, ConfigDict
 from typing import Optional
 from datetime import datetime
 from uuid import UUID
@@ -15,7 +15,8 @@ class StepBase(BaseModel):
     referenced_fixture_id: Optional[UUID] = None
     referenced_fixture_type: Optional[str] = None  # "extend" or "inline"
 
-    @validator('test_case_id', 'referenced_fixture_id', pre=True)
+    @field_validator('test_case_id', 'referenced_fixture_id', mode='before')
+    @classmethod
     def empty_string_to_none(cls, v):
         """Convert empty strings to None for UUID fields"""
         if v == "":
@@ -39,7 +40,8 @@ class StepUpdate(BaseModel):
     referenced_fixture_type: Optional[str] = None
     updated_by: Optional[str] = None
 
-    @validator('test_case_id', 'referenced_fixture_id', pre=True)
+    @field_validator('test_case_id', 'referenced_fixture_id', mode='before')
+    @classmethod
     def empty_string_to_none(cls, v):
         """Convert empty strings to None for UUID fields"""
         if v == "":
@@ -55,8 +57,7 @@ class StepInDB(StepBase):
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Step(StepInDB):

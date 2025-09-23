@@ -5,6 +5,7 @@ psycopg2-binary
 asyncpg
 pydantic==2.11.7
 pydantic-settings==2.10.1
+python-dotenv==1.1.1
 alembic
 python-multipart==0.0.20
 python-jose[cryptography]

@@ -1,5 +1,5 @@
 from typing import Optional, List, Union
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator, ConfigDict
 from datetime import datetime
 from uuid import UUID
 
@@ -12,7 +12,8 @@ class FixtureBase(BaseModel):
     environment: Optional[str] = "all"  # all, development, staging, production
     playwright_script: Optional[str] = None
 
-    @validator('project_id')
+    @field_validator('project_id')
+    @classmethod
     def convert_project_id_to_str(cls, v):
         return str(v) if isinstance(v, UUID) else v
 
@@ -42,9 +43,9 @@ class Fixture(FixtureBase):
     updated_at: Optional[datetime] = None
     author_name: Optional[str] = None
 
-    @validator('id')
+    @field_validator('id')
+    @classmethod
     def convert_id_to_str(cls, v):
         return str(v) if isinstance(v, UUID) else v
 
-    class Config:
-        from_attributes = True 
+    model_config = ConfigDict(from_attributes=True) 

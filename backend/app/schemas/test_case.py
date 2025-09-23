@@ -1,6 +1,6 @@
 from typing import Optional, List, Union
 from uuid import UUID
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, ConfigDict
 from datetime import datetime
 
 
@@ -25,8 +25,7 @@ class TestCaseFixture(TestCaseFixtureBase):
     created_at: datetime
     created_by: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TestCaseBase(BaseModel):
@@ -65,5 +64,4 @@ class TestCase(TestCaseBase):
     last_run_by: Optional[str] = None
     fixtures: List[TestCaseFixture] = []
 
-    class Config:
-        from_attributes = True 
+    model_config = ConfigDict(from_attributes=True) 

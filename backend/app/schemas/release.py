@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
@@ -36,8 +36,7 @@ class Release(ReleaseBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============ RELEASE TEST CASE SCHEMAS ============
@@ -64,8 +63,7 @@ class ReleaseTestCase(ReleaseTestCaseBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============ EXTENDED SCHEMAS WITH RELATIONSHIPS ============
