@@ -1,0 +1,570 @@
+/* Custom Dark Mode CSS for Swagger UI */
+
+/* Dark theme variables */
+:root {
+  --swagger-ui-bg: #1a1a1a;
+  --swagger-ui-text: #ffffff;
+  --swagger-ui-secondary-text: #e0e0e0;
+  --swagger-ui-border: #333333;
+  --swagger-ui-accent: #00b4d8;
+  --swagger-ui-accent-hover: #0077b6;
+  --swagger-ui-success: #4caf50;
+  --swagger-ui-error: #f44336;
+  --swagger-ui-warning: #ff9800;
+  --swagger-ui-info: #2196f3;
+}
+
+/* Dark mode toggle button styles */
+.swagger-ui .topbar {
+  background-color: var(--swagger-ui-bg) !important;
+  border-bottom: 1px solid var(--swagger-ui-border) !important;
+}
+
+.swagger-ui .topbar-wrapper {
+  background-color: var(--swagger-ui-bg) !important;
+}
+
+.swagger-ui .topbar .topbar-wrapper {
+  background-color: var(--swagger-ui-bg) !important;
+}
+
+.swagger-ui .topbar .topbar-wrapper .link {
+  color: var(--swagger-ui-text) !important;
+}
+
+/* Theme toggle button */
+.theme-toggle {
+  background: var(--swagger-ui-accent);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-left: 10px;
+  transition: all 0.2s ease;
+}
+
+.theme-toggle:hover {
+  background: var(--swagger-ui-accent-hover);
+  transform: translateY(-1px);
+}
+
+.theme-toggle:active {
+  transform: translateY(0);
+}
+
+/* Dark mode styles */
+.dark-mode {
+  background-color: var(--swagger-ui-bg) !important;
+  color: var(--swagger-ui-text) !important;
+}
+
+.dark-mode .swagger-ui {
+  background-color: var(--swagger-ui-bg) !important;
+}
+
+.dark-mode .swagger-ui .information-container {
+  background-color: var(--swagger-ui-bg) !important;
+  border-color: var(--swagger-ui-border) !important;
+}
+
+.dark-mode .swagger-ui .info {
+  background-color: var(--swagger-ui-bg) !important;
+}
+
+.dark-mode .swagger-ui .info .title {
+  color: var(--swagger-ui-text) !important;
+}
+
+.dark-mode .swagger-ui .info .description {
+  color: #f5f5f5 !important;
+  opacity: 0.9 !important;
+}
+
+.dark-mode .swagger-ui .scheme-container {
+  background-color: var(--swagger-ui-bg) !important;
+  border-color: var(--swagger-ui-border) !important;
+}
+
+.dark-mode .swagger-ui .opblock {
+  background-color: var(--swagger-ui-bg) !important;
+  border-color: var(--swagger-ui-border) !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+}
+
+.dark-mode .swagger-ui .opblock-summary {
+  background-color: var(--swagger-ui-bg) !important;
+  border-color: var(--swagger-ui-border) !important;
+}
+
+.dark-mode .swagger-ui .opblock-summary-description {
+  color: #f0f0f0 !important;
+  opacity: 0.95 !important;
+}
+
+.dark-mode .swagger-ui .opblock-description-wrapper {
+  background-color: var(--swagger-ui-bg) !important;
+  color: #ededed !important;
+  opacity: 0.9 !important;
+}
+
+.dark-mode .swagger-ui .opblock-body {
+  background-color: var(--swagger-ui-bg) !important;
+}
+
+.dark-mode .swagger-ui .opblock-section-header {
+  background-color: var(--swagger-ui-bg) !important;
+  color: var(--swagger-ui-text) !important;
+}
+
+.dark-mode .swagger-ui .parameters-container {
+  background-color: var(--swagger-ui-bg) !important;
+}
+
+.dark-mode .swagger-ui .parameter {
+  background-color: var(--swagger-ui-bg) !important;
+}
+
+.dark-mode .swagger-ui .parameter__name {
+  color: var(--swagger-ui-text) !important;
+}
+
+.dark-mode .swagger-ui .parameter__type {
+  color: var(--swagger-ui-accent) !important;
+}
+
+.dark-mode .swagger-ui .parameter__description {
+  color: #e8e8e8 !important;
+  opacity: 0.9 !important;
+}
+
+.dark-mode .swagger-ui .model-container {
+  background-color: var(--swagger-ui-bg) !important;
+}
+
+.dark-mode .swagger-ui .model-example {
+  background-color: var(--swagger-ui-bg) !important;
+  border-color: var(--swagger-ui-border) !important;
+}
+
+.dark-mode .swagger-ui .responses-inner {
+  background-color: var(--swagger-ui-bg) !important;
+}
+
+.dark-mode .swagger-ui .response {
+  background-color: var(--swagger-ui-bg) !important;
+  border-color: var(--swagger-ui-border) !important;
+}
+
+.dark-mode .swagger-ui .response-col_status {
+  color: var(--swagger-ui-text) !important;
+}
+
+.dark-mode .swagger-ui .response-col_links {
+  color: #e5e5e5 !important;
+  opacity: 0.9 !important;
+}
+
+.dark-mode .swagger-ui .model-box {
+  background-color: var(--swagger-ui-bg) !important;
+  border-color: var(--swagger-ui-border) !important;
+}
+
+.dark-mode .swagger-ui .model-title {
+  color: var(--swagger-ui-text) !important;
+}
+
+.dark-mode .swagger-ui .model .property {
+  color: var(--swagger-ui-text) !important;
+}
+
+.dark-mode .swagger-ui .model .property.primitive {
+  color: var(--swagger-ui-accent) !important;
+}
+
+.dark-mode .swagger-ui .btn {
+  background-color: var(--swagger-ui-accent) !important;
+  border-color: var(--swagger-ui-accent) !important;
+  color: white !important;
+}
+
+.dark-mode .swagger-ui .btn:hover {
+  background-color: var(--swagger-ui-accent-hover) !important;
+  border-color: var(--swagger-ui-accent-hover) !important;
+}
+
+.dark-mode .swagger-ui .btn.authorize {
+  background-color: var(--swagger-ui-success) !important;
+  border-color: var(--swagger-ui-success) !important;
+}
+
+.dark-mode .swagger-ui .btn.authorize:hover {
+  background-color: #45a049 !important;
+  border-color: #45a049 !important;
+}
+
+.dark-mode .swagger-ui .btn.authorize svg {
+  fill: white !important;
+}
+
+.dark-mode .swagger-ui .btn.execute {
+  background-color: var(--swagger-ui-accent) !important;
+  border-color: var(--swagger-ui-accent) !important;
+  color: white !important;
+}
+
+.dark-mode .swagger-ui .btn.execute:hover {
+  background-color: var(--swagger-ui-accent-hover) !important;
+}
+
+.dark-mode .swagger-ui .input {
+  background-color: var(--swagger-ui-bg) !important;
+  border-color: var(--swagger-ui-border) !important;
+  color: var(--swagger-ui-text) !important;
+}
+
+.dark-mode .swagger-ui .input:focus {
+  border-color: var(--swagger-ui-accent) !important;
+  box-shadow: 0 0 0 2px rgba(0, 180, 216, 0.2) !important;
+}
+
+.dark-mode .swagger-ui textarea {
+  background-color: var(--swagger-ui-bg) !important;
+  border-color: var(--swagger-ui-border) !important;
+  color: var(--swagger-ui-text) !important;
+}
+
+.dark-mode .swagger-ui textarea:focus {
+  border-color: var(--swagger-ui-accent) !important;
+  box-shadow: 0 0 0 2px rgba(0, 180, 216, 0.2) !important;
+}
+
+.dark-mode .swagger-ui select {
+  background-color: var(--swagger-ui-bg) !important;
+  border-color: var(--swagger-ui-border) !important;
+  color: var(--swagger-ui-text) !important;
+}
+
+.dark-mode .swagger-ui select:focus {
+  border-color: var(--swagger-ui-accent) !important;
+  box-shadow: 0 0 0 2px rgba(0, 180, 216, 0.2) !important;
+}
+
+/* Highlighted sections */
+.dark-mode .swagger-ui .opblock.opblock-post {
+  border-color: var(--swagger-ui-success) !important;
+}
+
+.dark-mode .swagger-ui .opblock.opblock-post .opblock-summary {
+  border-color: var(--swagger-ui-success) !important;
+}
+
+.dark-mode .swagger-ui .opblock.opblock-get {
+  border-color: var(--swagger-ui-info) !important;
+}
+
+.dark-mode .swagger-ui .opblock.opblock-get .opblock-summary {
+  border-color: var(--swagger-ui-info) !important;
+}
+
+.dark-mode .swagger-ui .opblock.opblock-put {
+  border-color: var(--swagger-ui-warning) !important;
+}
+
+.dark-mode .swagger-ui .opblock.opblock-put .opblock-summary {
+  border-color: var(--swagger-ui-warning) !important;
+}
+
+.dark-mode .swagger-ui .opblock.opblock-delete {
+  border-color: var(--swagger-ui-error) !important;
+}
+
+.dark-mode .swagger-ui .opblock.opblock-delete .opblock-summary {
+  border-color: var(--swagger-ui-error) !important;
+}
+
+/* Code blocks */
+.dark-mode .swagger-ui .highlight-code pre {
+  background-color: #2d3748 !important;
+  color: #e2e8f0 !important;
+}
+
+.dark-mode .swagger-ui .microlight {
+  background-color: #2d3748 !important;
+  color: #e2e8f0 !important;
+}
+
+/* Collapsed state styling */
+.dark-mode .swagger-ui .opblock.is-open .opblock-summary {
+  background-color: var(--swagger-ui-bg) !important;
+}
+
+.dark-mode .swagger-ui .opblock.is-open .opblock-summary:hover {
+  background-color: #2a2a2a !important;
+}
+
+/* Loading spinner */
+.dark-mode .swagger-ui .loading-container {
+  background-color: var(--swagger-ui-bg) !important;
+}
+
+.dark-mode .swagger-ui .loading-container .loading {
+  color: var(--swagger-ui-text) !important;
+}
+
+/* Auth modal */
+.dark-mode .swagger-ui .auth-container {
+  background-color: var(--swagger-ui-bg) !important;
+  border-color: var(--swagger-ui-border) !important;
+}
+
+.dark-mode .swagger-ui .auth-container h4 {
+  color: var(--swagger-ui-text) !important;
+}
+
+.dark-mode .swagger-ui .auth-header {
+  background-color: var(--swagger-ui-bg) !important;
+}
+
+.dark-mode .swagger-ui .auth-btn-wrapper {
+  background-color: var(--swagger-ui-bg) !important;
+}
+
+/* Scrollbars */
+.dark-mode .swagger-ui ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.dark-mode .swagger-ui ::-webkit-scrollbar-track {
+  background: var(--swagger-ui-bg);
+}
+
+.dark-mode .swagger-ui ::-webkit-scrollbar-thumb {
+  background: var(--swagger-ui-border);
+  border-radius: 4px;
+}
+
+.dark-mode .swagger-ui ::-webkit-scrollbar-thumb:hover {
+  background: var(--swagger-ui-accent);
+}
+
+/* Status codes */
+.dark-mode .swagger-ui .response-col_status code {
+  background-color: #2d3748 !important;
+  color: var(--swagger-ui-info) !important;
+}
+
+.dark-mode .swagger-ui .response-col_status code.success {
+  background-color: rgba(76, 175, 80, 0.1) !important;
+  color: var(--swagger-ui-success) !important;
+}
+
+.dark-mode .swagger-ui .response-col_status code.error {
+  background-color: rgba(244, 67, 54, 0.1) !important;
+  color: var(--swagger-ui-error) !important;
+}
+
+/* Filter input */
+.dark-mode .swagger-ui .filter-container input {
+  background-color: var(--swagger-ui-bg) !important;
+  border-color: var(--swagger-ui-border) !important;
+  color: var(--swagger-ui-text) !important;
+  opacity: 1 !important;
+}
+
+.dark-mode .swagger-ui .filter-container input:focus {
+  border-color: var(--swagger-ui-accent) !important;
+  box-shadow: 0 0 0 2px rgba(0, 180, 216, 0.2) !important;
+}
+
+/* Enhanced text clarity for better readability */
+.dark-mode .swagger-ui {
+  font-weight: 400 !important;
+}
+
+.dark-mode .swagger-ui .opblock-title {
+  font-weight: 500 !important;
+  color: var(--swagger-ui-text) !important;
+  opacity: 1 !important;
+}
+
+.dark-mode .swagger-ui .opblock-summary-path {
+  color: var(--swagger-ui-text) !important;
+  font-weight: 500 !important;
+}
+
+.dark-mode .swagger-ui .opblock-summary-section .opblock-summary-method {
+  font-weight: 700 !important;
+}
+
+.dark-mode .swagger-ui .opblock-body .highlight-code {
+  color: #e8e8e8 !important;
+}
+
+.dark-mode .swagger-ui .model>.prop {
+  color: #e8e8e8 !important;
+}
+
+.dark-mode .swagger-ui .model .prop-name {
+  color: #f0f0f0 !important;
+  font-weight: 500 !important;
+}
+
+.dark-mode .swagger-ui .model .property {
+  color: #e5e5e5 !important;
+}
+
+/* Response section headers and labels */
+.dark-mode .swagger-ui .response-col_status {
+  color: var(--swagger-ui-text) !important;
+  font-weight: 600 !important;
+}
+
+.dark-mode .swagger-ui .response-col_description {
+  color: #f0f0f0 !important;
+  font-weight: 500 !important;
+}
+
+.dark-mode .swagger-ui .response-col_links {
+  color: #f0f0f0 !important;
+  font-weight: 500 !important;
+}
+
+/* Response headers */
+.dark-mode .swagger-ui .response h5 {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  opacity: 1 !important;
+}
+
+.dark-mode .swagger-ui .response h4 {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  opacity: 1 !important;
+}
+
+/* Response content headers */
+.dark-mode .swagger-ui .response .response-col_status {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+.dark-mode .swagger-ui .response .response-col_description {
+  color: #f5f5f5 !important;
+  font-weight: 500 !important;
+}
+
+.dark-mode .swagger-ui .response .response-col_links {
+  color: #f5f5f5 !important;
+  font-weight: 500 !important;
+}
+
+/* Example Value and Schema headers */
+.dark-mode .swagger-ui .response .tab-header {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+.dark-mode .swagger-ui .response .tab-item {
+  color: #f0f0f0 !important;
+  font-weight: 500 !important;
+}
+
+.dark-mode .swagger-ui .response .tab-item.active {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+/* Response content text */
+.dark-mode .swagger-ui .response .response-content {
+  color: #e8e8e8 !important;
+}
+
+.dark-mode .swagger-ui .response .response-content-type {
+  color: #f0f0f0 !important;
+  font-weight: 500 !important;
+}
+
+/* Response body content */
+.dark-mode .swagger-ui .response .response-body {
+  color: #e8e8e8 !important;
+}
+
+.dark-mode .swagger-ui .response .response-schema {
+  color: #e8e8e8 !important;
+}
+
+/* Specific response section improvements */
+.dark-mode .swagger-ui .responses-inner h4 {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  opacity: 1 !important;
+}
+
+.dark-mode .swagger-ui .responses-inner h5 {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  opacity: 1 !important;
+}
+
+.dark-mode .swagger-ui .responses-inner .response-col_status {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+.dark-mode .swagger-ui .responses-inner .response-col_description {
+  color: #f5f5f5 !important;
+  font-weight: 500 !important;
+}
+
+.dark-mode .swagger-ui .responses-inner .response-col_links {
+  color: #f5f5f5 !important;
+  font-weight: 500 !important;
+}
+
+/* Response table headers */
+.dark-mode .swagger-ui .responses-inner table th {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  opacity: 1 !important;
+}
+
+.dark-mode .swagger-ui .responses-inner table td {
+  color: #e8e8e8 !important;
+  font-weight: 400 !important;
+}
+
+/* Response content type headers */
+.dark-mode .swagger-ui .response-content-type {
+  color: #f0f0f0 !important;
+  font-weight: 500 !important;
+}
+
+/* Tab headers for Example Value and Schema */
+.dark-mode .swagger-ui .tab-list .tab-item {
+  color: #f0f0f0 !important;
+  font-weight: 500 !important;
+}
+
+.dark-mode .swagger-ui .tab-list .tab-item.active {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+/* Response headers specifically */
+.dark-mode .swagger-ui .response .response-col_status code {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+/* All text in response sections */
+.dark-mode .swagger-ui .responses-inner {
+  color: #e8e8e8 !important;
+}
+
+.dark-mode .swagger-ui .responses-inner .opblock-description-wrapper {
+  color: #f0f0f0 !important;
+  font-weight: 500 !important;
+}

@@ -78,10 +78,77 @@ async def create_sample_data():
             created_by=str(db_admin.id)
         )
         
-        db_ecommerce = await crud_project.create_project(db, ecommerce_project, created_by=str(db_admin.id))
-        db_mobile = await crud_project.create_project(db, mobile_project, created_by=str(db_admin.id))
+        # Create projects without Playwright setup for sample data (faster initialization)
+        # This avoids the slow npx create-playwright@latest --install-deps command that can take 5-15 minutes
+        # Playwright projects can be created later via API when needed using the project creation endpoint
+        from app.models.project import Project
+        
+        # Create e-commerce project directly in database
+        db_ecommerce = Project(
+            name=ecommerce_project.name,
+            description=ecommerce_project.description,
+            environment=ecommerce_project.environment,
+            playwright_project_path=ecommerce_project.playwright_project_path,
+            created_by=str(db_admin.id),
+            updated_by=str(db_admin.id)
+        )
+        db.add(db_ecommerce)
+        db.commit()
+        db.refresh(db_ecommerce)
+        
+        # Create mobile project directly in database
+        db_mobile = Project(
+            name=mobile_project.name,
+            description=mobile_project.description,
+            environment=mobile_project.environment,
+            created_by=str(db_admin.id),
+            updated_by=str(db_admin.id)
+        )
+        db.add(db_mobile)
+        db.commit()
+        db.refresh(db_mobile)
         
         print(f"Created projects: {db_ecommerce.name}, {db_mobile.name}")
+        
+        # Create default project settings for both projects
+        print("Creating default project settings...")
+        from app.models.project_setting import ProjectSetting
+        
+        # Default settings for e-commerce project
+        ecommerce_default_settings = [
+            ProjectSetting(project_id=str(db_ecommerce.id), key="BASE_URL", value="https://shop.example.com", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_ecommerce.id), key="TIMEOUT", value="30000", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_ecommerce.id), key="EXPECT_TIMEOUT", value="10000", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_ecommerce.id), key="RETRIES", value="1", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_ecommerce.id), key="WORKERS", value="1", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_ecommerce.id), key="VIEWPORT_WIDTH", value="1920", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_ecommerce.id), key="VIEWPORT_HEIGHT", value="1080", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_ecommerce.id), key="FULLY_PARALLEL", value="true", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_ecommerce.id), key="HEADLESS_MODE", value="true", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_ecommerce.id), key="SCREENSHOT", value="off", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_ecommerce.id), key="VIDEO", value="off", created_by=str(db_admin.id)),
+        ]
+        
+        # Default settings for mobile project
+        mobile_default_settings = [
+            ProjectSetting(project_id=str(db_mobile.id), key="BASE_URL", value="https://example.com", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_mobile.id), key="TIMEOUT", value="30000", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_mobile.id), key="EXPECT_TIMEOUT", value="10000", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_mobile.id), key="RETRIES", value="1", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_mobile.id), key="WORKERS", value="1", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_mobile.id), key="VIEWPORT_WIDTH", value="375", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_mobile.id), key="VIEWPORT_HEIGHT", value="667", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_mobile.id), key="FULLY_PARALLEL", value="false", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_mobile.id), key="HEADLESS_MODE", value="false", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_mobile.id), key="SCREENSHOT", value="off", created_by=str(db_admin.id)),
+            ProjectSetting(project_id=str(db_mobile.id), key="VIDEO", value="off", created_by=str(db_admin.id)),
+        ]
+        
+        # Add all settings to database
+        for setting in ecommerce_default_settings + mobile_default_settings:
+            db.add(setting)
+        db.commit()
+        print(f"Created {len(ecommerce_default_settings + mobile_default_settings)} default project settings")
         
         # Create sample global tags
         print("Creating sample global tags...")
